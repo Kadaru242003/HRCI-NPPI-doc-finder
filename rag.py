@@ -1,15 +1,22 @@
+import os
 import json
 import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
-import ollama
+from groq import Groq
 
 # --- CONFIG ---
 CHROMA_DIR = "./db"
 EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
-LLM_MODEL = "llama3.1:8b"
+LLM_MODEL = "llama-3.3-70b-versatile"
 
-# --- CLIENTS ---
+# --- GROQ CLIENT ---
+GROQ_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_KEY:
+    raise Exception("Missing GROQ_API_KEY environment variable!")
+groq_client = Groq(api_key=GROQ_KEY)
+
+# --- VECTOR DB CLIENTS ---
 client = chromadb.Client(Settings(persist_directory=CHROMA_DIR))
 collection = client.get_or_create_collection("documents")
 embedder = SentenceTransformer(EMBED_MODEL_NAME)
@@ -34,7 +41,7 @@ def load_context_for_doc(doc_id: str) -> str:
 
 
 # --------------------------------------------------------
-# Load stored findings for a document (for chatbot)
+# Load stored findings for a document (for chatbot, if needed)
 # --------------------------------------------------------
 def load_findings(doc_id: str):
     results = collection.get()
@@ -129,12 +136,12 @@ def _parse_json_from_text(text: str):
 
 
 # --------------------------------------------------------
-# MAIN HRCI / NPPI DETECTION FOR A GIVEN DOC
+# MAIN HRCI / NPPI DETECTION FOR A GIVEN DOC (uses GROQ)
 # --------------------------------------------------------
 def detect_hrci_nppi(doc_id: str):
     """
     Detect HRCI / NPPI for a specific uploaded document ID.
-    Uses Chroma to fetch that document's chunks, runs Llama,
+    Uses Chroma to fetch that document's chunks, runs Groq LLM,
     parses JSON, and stores the findings back into Chroma.
     """
     context = load_context_for_doc(doc_id)
@@ -150,22 +157,24 @@ def detect_hrci_nppi(doc_id: str):
     user_prompt = build_user_prompt(context)
 
     try:
-        result = ollama.chat(
+        completion = groq_client.chat.completions.create(
             model=LLM_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
+            temperature=0.2,
         )
     except Exception as e:
-        print("Ollama error:", e)
+        print("Groq error in detect_hrci_nppi:", e)
         return []
 
-    raw = result.get("message", {}).get("content", "").strip()
+    # Groq SDK: message.content is an attribute, not a dict
+    raw = completion.choices[0].message.content.strip()
 
-    print("\n=== RAW MODEL OUTPUT ===\n")
+    print("\n=== RAW MODEL OUTPUT (detect_hrci_nppi) ===\n")
     print(raw)
-    print("\n========================\n")
+    print("\n===========================================\n")
 
     findings = _parse_json_from_text(raw)
     if not isinstance(findings, list):
@@ -201,22 +210,23 @@ def detect_from_text(text: str):
     user_prompt = build_user_prompt(text)
 
     try:
-        result = ollama.chat(
+        completion = groq_client.chat.completions.create(
             model=LLM_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
+            temperature=0.2,
         )
     except Exception as e:
-        print("Ollama error:", e)
+        print("Groq error in detect_from_text:", e)
         return []
 
-    raw = result.get("message", {}).get("content", "").strip()
+    raw = completion.choices[0].message.content.strip()
 
     print("\n=== RAW MODEL OUTPUT (direct) ===\n")
     print(raw)
-    print("\n=========================\n")
+    print("\n=================================\n")
 
     return _parse_json_from_text(raw)
 
