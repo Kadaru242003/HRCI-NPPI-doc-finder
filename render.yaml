@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: hrci-nppi-riskbot
+    env: python
+    region: oregon
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn api:app --host 0.0.0.0 --port $PORT"
+    plan: free
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+
