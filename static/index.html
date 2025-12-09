@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>RiskBot – HRCI/NPPI Detector</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50">
+  <div class="max-w-5xl mx-auto py-8 px-4 space-y-6">
+    <h1 class="text-3xl font-semibold text-slate-900">
+      RiskBot – HRCI/NPPI Detector
+    </h1>
+
+    <div class="grid gap-6 md:grid-cols-2">
+      
+      <!-- Upload card -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+        <h2 class="text-lg font-semibold text-slate-900 mb-4">Upload a File</h2>
+
+        <form id="upload-form" class="space-y-4">
+          <input type="file" name="file" id="file-input"
+            class="block w-full text-sm text-slate-700" required />
+
+          <button type="submit"
+            class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">
+            Upload
+          </button>
+        </form>
+
+        <p id="upload-status" class="mt-3 text-sm text-slate-600"></p>
+      </div>
+
+      <!-- Chat card -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+        <h2 class="text-lg font-semibold text-slate-900 mb-4">
+          Ask a Question About This Document
+        </h2>
+
+        <p class="text-xs text-slate-500 mb-2">
+          Current Document ID: 
+          <span id="doc-id-display" class="font-mono text-[11px] text-slate-700">(none yet)</span>
+        </p>
+
+        <form id="chat-form" class="space-y-3">
+          <textarea id="chat-input" rows="3"
+            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Examples: 'show only HRCI', 'show only NPPI', 'show salary only', 'summarize risky data'..."
+          ></textarea>
+
+          <button type="submit" id="chat-submit" disabled
+            class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+            Ask
+          </button>
+        </form>
+
+        <!-- Filtered professional answer -->
+        <div id="chat-answer" class="mt-4 hidden">
+          <div class="bg-white shadow-sm border border-slate-200 rounded-xl p-4">
+            <h3 class="text-md font-semibold text-slate-900 mb-2">Filtered Results</h3>
+            <div id="chat-answer-content"
+              class="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Findings -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+      <h2 class="text-lg font-semibold text-slate-900 mb-2">Detected Sensitive Data</h2>
+
+      <p class="text-xs text-slate-500 mb-3">
+        Document ID:
+        <span id="doc-id-display-bottom" class="font-mono text-[11px] text-slate-700">(none yet)</span>
+      </p>
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-100 text-slate-700">
+              <th class="px-3 py-2 border-b border-slate-200">Type</th>
+              <th class="px-3 py-2 border-b border-slate-200">Category</th>
+              <th class="px-3 py-2 border-b border-slate-200">Text Snippet</th>
+              <th class="px-3 py-2 border-b border-slate-200">Confidence</th>
+            </tr>
+          </thead>
+          <tbody id="findings-body">
+            <tr>
+              <td colspan="4" class="px-3 py-2 text-slate-500">
+                No data yet. Upload a file to see detected HRCI/NPPI items.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentDocId = null;
+    let lastFindings = [];
+
+    const uploadForm = document.getElementById("upload-form");
+    const uploadStatus = document.getElementById("upload-status");
+    const findingsBody = document.getElementById("findings-body");
+    const docIdDisplay = document.getElementById("doc-id-display");
+    const docIdDisplayBottom = document.getElementById("doc-id-display-bottom");
+    const chatForm = document.getElementById("chat-form");
+    const chatInput = document.getElementById("chat-input");
+    const chatAnswer = document.getElementById("chat-answer");
+    const chatSubmit = document.getElementById("chat-submit");
+    const chatAnswerContent = document.getElementById("chat-answer-content");
+
+    function formatFilteredAnswer(answerText) {
+      answerText = answerText.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+      answerText = answerText.replace(/^\s*-\s*(.*)$/gm, "<li>$1</li>");
+
+      if (answerText.includes("<li>")) {
+        answerText = "<ul class='list-disc pl-5 space-y-1'>" + answerText + "</ul>";
+      }
+
+      return `
+        <div class="space-y-2 leading-relaxed text-slate-800">
+          ${answerText}
+        </div>
+      `;
+    }
+
+    function renderFindings(findings) {
+      findingsBody.innerHTML = "";
+
+      if (!findings || findings.length === 0) {
+        findingsBody.innerHTML =
+          '<tr><td colspan="4" class="px-3 py-2 text-slate-500">No sensitive data detected.</td></tr>';
+        return;
+      }
+
+      for (const item of findings) {
+        const badge =
+          item.type === "HRCI"
+            ? '<span class="px-2 py-1 rounded-full bg-red-100 text-red-800 text-[11px] font-semibold">HRCI</span>'
+            : '<span class="px-2 py-1 rounded-full bg-blue-100 text-blue-800 text-[11px] font-semibold">NPPI</span>';
+
+        const tr = document.createElement("tr");
+        tr.className = "border-b border-slate-100";
+
+        tr.innerHTML = `
+          <td class="px-3 py-2 align-top">${badge}</td>
+          <td class="px-3 py-2 align-top text-slate-800">${item.category}</td>
+          <td class="px-3 py-2 align-top text-slate-800 whitespace-pre-wrap">${item.text_snippet}</td>
+          <td class="px-3 py-2 align-top text-slate-600">
+            ${(item.confidence * 100).toFixed(1)}%
+          </td>
+        `;
+        findingsBody.appendChild(tr);
+      }
+    }
+
+    uploadForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const fileInput = document.getElementById("file-input");
+      if (!fileInput.files.length) {
+        alert("Pick a file first.");
+        return;
+      }
+
+      uploadStatus.textContent = "Uploading…";
+
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+
+      const res = await fetch("/upload", { method: "POST", body: formData });
+      const data = await res.json();
+
+      currentDocId = data.doc_id;
+      lastFindings = data.findings || [];
+
+      docIdDisplay.textContent = currentDocId;
+      docIdDisplayBottom.textContent = currentDocId;
+
+      chatSubmit.disabled = false;
+
+      uploadStatus.textContent = `Upload complete. Detected ${lastFindings.length} sensitive items.`;
+
+      renderFindings(lastFindings);
+    });
+
+    chatForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const message = chatInput.value.trim();
+      if (!message) return;
+
+      const formData = new FormData();
+      formData.append("doc_id", currentDocId);
+      formData.append("question", message);
+
+      const res = await fetch("/ask", { method: "POST", body: formData });
+      const data = await res.json();
+
+      chatAnswerContent.innerHTML = formatFilteredAnswer(data.answer);
+      chatAnswer.classList.remove("hidden");
+    });
+  </script>
+</body>
+</html>
+
