@@ -47,19 +47,9 @@ XLSX Parsing	pandas
 Deployment	Uvicorn
 <hr/>
 <h2>📂 Project Structure</h2>
-hrci_nppi_bot/
-│
-├── api.py                 # FastAPI endpoints (upload + chat)
-├── rag.py                 # HRCI/NPPI detection + Groq LLM logic
-├── ingest.py              # Excel parsing, text extraction, chunking, embedding
-│
-├── db/                    # ChromaDB persistent vector storage
-├── data/                  # Uploaded user files
-├── static/
-│   └── index.html         # Chatbot frontend
-│
-├── requirements.txt
-└── README.md
+
+<img width="718" height="325" alt="Screenshot 2025-12-10 at 9 40 56 PM" src="https://github.com/user-attachments/assets/09c951c9-3d3a-49bb-a2f9-afa53a16c2dd" />
+
 
 
 <hr/>
