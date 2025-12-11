@@ -1,154 +1,115 @@
-RiskBot – HRCI/NPPI Detection System (RAG Pipeline)
+<h1>🚨 RiskBot – HRCI / NPPI Detection System (RAG Pipeline)</h1>
+<p> <b>RiskBot</b> is an end-to-end Retrieval-Augmented Generation (RAG) platform that detects <b>Human Resource Confidential Information (HRCI)</b> and <b>Non-Public Personal Information (NPPI)</b> from unstructured text and Excel documents. Built using <b>FastAPI</b>, <b>Groq LLaMA-3.3-70B</b>, <b>ChromaDB</b>, and <b>Sentence-Transformer embeddings</b>. </p> <hr/>
+<h2>🔥 Key Capabilities</h2>
 
-A production-ready Retrieval-Augmented Generation (RAG) system for detecting Human Resource Confidential Information (HRCI) and Non-Public Personal Information (NPPI) from unstructured documents (Excel + text).
+Full RAG pipeline: ingestion → chunking → embeddings → vector search → LLM reasoning
 
-RiskBot combines FastAPI, Groq LLaMA-3.3-70B, ChromaDB, and Sentence-Transformer embeddings to ingest files, vectorize content, run LLM-powered classification, and enable interactive Q&A over document context.
+Unstructured data support (Excel multi-sheet, text)
 
-🚀 Features
+HRCI/NPPI detection with structured JSON output
 
-End-to-end RAG pipeline for sensitive information detection
+85% confidence filter to remove noisy predictions
 
-Excel + TXT ingestion with multi-sheet parsing & metadata-aware chunking
+Persistent ChromaDB vector store
 
-Vector storage in ChromaDB with persistent embeddings
+Fast interactive chatbot for querying document insights
 
-HRCI/NPPI detection powered by Groq LLaMA-3.3-70B
+Local, secure, and enterprise-friendly architecture
 
-85% confidence filtering to suppress weak predictions
+<hr/>
+<h2>🧠 System Workflow</h2>
+<p align="center"> <img src="https://github.com/user-attachments/assets/4fe20c48-e3d0-4f37-a8bf-26efc76f924c" width="400"/> </p> <br>
 
-Interactive chatbot UI for context-aware querying
+The system processes documents in 5 major stages:
 
-Full local execution using uvicorn
+Upload document via FastAPI (/upload)
 
-🧠 Architecture Overview
+Extract text from XLSX/TXT
 
-RiskBot Workflow:
+Chunk + embed using MiniLM
 
-User uploads file (Excel or Text) → api.py (/upload)
+Store embeddings in ChromaDB (persistent)
 
-File saved locally → ./data/<doc_id>.xlsx
+Run LLaMA-3.3-70B (Groq) to detect HRCI/NPPI
 
-Extract text via Excel parser or text loader → ingest.py
+Interact through chatbot UI for contextual analysis
 
-Chunk + vectorize text using SentenceTransformer
-
-Store embeddings + metadata in ChromaDB
-
-Run Groq LLaMA-3.3-70B to detect HRCI/NPPI → rag.py
-
-Store model findings back in ChromaDB (kind="findings")
-
-User queries chatbot (/ask)
-
-RAG context retrieved and filtered using LLM
-
-Answer returned to UI
-
-You can include your workflow diagram right after this section.
-<img width="375" height="1190" alt="image" src="https://github.com/user-attachments/assets/4fe20c48-e3d0-4f37-a8bf-26efc76f924c" />
-
-📸 UI Screenshots
-<img width="1089" height="903" alt="Screenshot 2025-12-10 at 9 24 33 PM" src="https://github.com/user-attachments/assets/0658309d-3a67-4758-a79d-263fda5d06e0" />
-<img width="1038" height="807" alt="Screenshot 2025-12-10 at 9 24 52 PM" src="https://github.com/user-attachments/assets/ce188083-ae57-40b7-a58a-664e26ad1823" />
-
-Example sections:
-
-Upload Page
-
-Results & Findings
-
-Chatbot Interface
-
-🔧 Tech Stack
-Component	Tool
-Backend Framework	FastAPI
-LLM	Groq LLaMA-3.3-70B
-Vector DB	ChromaDB
+<hr/>
+<h2>🖥️ UI Screenshots</h2>
+<p align="center"> <img src="https://github.com/user-attachments/assets/0658309d-3a67-4758-a79d-263fda5d06e0" width="850"/> <br/><br/> <img src="https://github.com/user-attachments/assets/ce188083-ae57-40b7-a58a-664e26ad1823" width="850"/> </p> <hr/>
+<h2>⚙️ Tech Stack</h2>
+Component	Technology
+API Server	FastAPI
+LLM	Groq LLaMA-3.3-70B Versatile
 Embeddings	all-MiniLM-L6-v2
-Document Parsing	pandas (Excel), custom chunker
-Serving	Uvicorn
-Environment	Python 3.10+
-📦 Project Structure
+Vector DB	ChromaDB
+XLSX Parsing	pandas
+Deployment	Uvicorn
+<hr/>
+<h2>📂 Project Structure</h2>
 hrci_nppi_bot/
 │
-├── api.py               # FastAPI backend (upload + chat endpoints)
-├── rag.py               # Detection pipeline + Groq LLM logic
-├── ingest.py            # Excel/text parsing + chunking + vector storage
-├── db/                  # ChromaDB persistent storage
-├── data/                # Uploaded files saved locally
+├── api.py                 # FastAPI endpoints (upload + chat)
+├── rag.py                 # HRCI/NPPI detection + Groq LLM logic
+├── ingest.py              # Excel parsing, text extraction, chunking, embedding
+│
+├── db/                    # ChromaDB persistent vector storage
+├── data/                  # Uploaded user files
 ├── static/
-│   └── index.html       # Chatbot UI
+│   └── index.html         # Chatbot frontend
 │
 ├── requirements.txt
 └── README.md
 
-▶️ Run Locally
-1. Create virtual environment
+<hr/>
+<h2>🚀 Running the Project Locally</h2>
+1. Create environment
 python3 -m venv venv
 source venv/bin/activate
 
 2. Install dependencies
 pip install -r requirements.txt
 
-3. Set your Groq API key
+3. Add Groq API key
 export GROQ_API_KEY="your_key_here"
 
-4. Start the server
+4. Start FastAPI server
 uvicorn api:app --reload
 
 5. Open UI
-
-Visit:
-
 http://localhost:8000/static/index.html
 
-🔍 HRCI / NPPI Detection Logic
+<hr/>
+<h2>🔍 Detection Schema</h2>
 
-RiskBot identifies sensitive categories such as:
-
-HRCI Examples
-
-Salaries, compensation
-
-Performance reviews
-
-PIP / warnings
-
-Termination language
-
-Health/medical employment info
-
-NPPI Examples
-
-SSNs
-
-Bank/routing numbers
-
-Loan/account numbers
-
-Credit card numbers
-
-Each detection includes:
+The model outputs structured JSON such as:
 
 {
   "type": "HRCI",
-  "text_snippet": "Annual salary: $98,000",
+  "text_snippet": "Employee salary: $102,000",
   "category": "salary",
   "confidence": 0.93
 }
 
 
-Low-confidence items (< 0.85) are automatically dropped.
+Low-confidence predictions (< 0.85) are filtered out.
 
-💡 Why This Project Matters
+<hr/>
+<h2>🏆 Why This Project Matters</h2>
 
-This system demonstrates:
+RiskBot showcases:
 
-Real-world ML engineering: ingestion → vectorization → retrieval → LLM classification
+Practical, production-style RAG engineering
 
-Handling of unstructured enterprise data
+Handling and indexing unstructured enterprise data
 
-Secure LLM inference patterns
+Secure LLM workflows with contextual vector retrieval
 
-Foundations of production-level RAG systems
+Real-world HR/compliance use-case alignment
 
+It reflects strong skills in LLM integration, vector databases, ML systems design, and backend engineering.
+
+<hr/>
+<h2>📬 Contact</h2>
+
+If you want the deployment version or architecture diagram as a PNG/SVG, feel free to ask.
