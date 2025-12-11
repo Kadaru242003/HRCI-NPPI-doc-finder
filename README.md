@@ -61,6 +61,7 @@ hrci_nppi_bot/
 ├── requirements.txt
 └── README.md
 
+
 <hr/>
 <h2>🚀 Running the Project Locally</h2>
 1. Create environment
