@@ -15,7 +15,7 @@ def extract_text_from_excel(file_path: str) -> str:
 
     for sheet in xls.sheet_names:
         try:
-            df = xls.parse(sheet, dtype=str)
+            df = xls.parse(sheet, header=None, dtype=str)
             df = df.fillna("")
         except Exception:
             continue
@@ -71,7 +71,7 @@ def index_file(file_path: str, doc_id: str | None = None):
         text = load_text_from_file(file_path)
 
     debug_path = file_path + ".txt"
-    with open(debug_path, "w") as f:
+    with open(debug_path, "w", encoding="utf-8") as f:
         f.write(text)
 
     chunks = chunk_text(text)
