@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/Kadaru242003/HRCI-NPPI-doc-finder/actions/workflows/tests.yml/badge.svg)](https://github.com/Kadaru242003/HRCI-NPPI-doc-finder/actions/workflows/tests.yml)
 
-RiskBot is a small FastAPI service that uses an LLM (LLaMA-3.3-70B, served by [Groq](https://groq.com)) to flag
+RiskBot is a small FastAPI service that uses an LLM served by [Groq](https://groq.com) (`openai/gpt-oss-120b` by default, configurable with `GROQ_MODEL`) to flag
 sensitive data in uploaded **.txt** and **Excel** files:
 
 - **HRCI**: Human Resources Confidential Information, such as salaries, bonuses, performance reviews, PIPs,
@@ -35,15 +35,17 @@ flowchart TD
     D --> E["Split into 1000-char chunks, 200-char overlap"]
     E --> F["Embed chunks (all-MiniLM-L6-v2)<br/>and add to the persistent ChromaDB collection (./db)"]
     F --> G["rag.py: load all of this doc's chunks in file order,<br/>group consecutive chunks into batches of up to<br/>DETECT_BATCH_CHARS (4000) chars of chunk text"]
-    G --> H["Groq: llama-3.3-70b-versatile, one call per batch<br/>prompt: 'return ONLY a JSON array'"]
-    H --> I["Parse each reply into a JSON array<br/>(direct parse, else the text between the first '[' and last ']', else [])"]
-    I --> I2["Merge batches, de-duplicate by (type, snippet),<br/>keep the highest confidence"]
-    I2 --> J["Response: { doc_id, indexed_chunks, findings }"]
+    G --> H["Groq: GROQ_MODEL (default openai/gpt-oss-120b), one call per batch<br/>prompt: 'return ONLY a JSON array'"]
+    H --> I["Extract the JSON array from each reply<br/>(no array or an LLM error = failed batch)"]
+    I --> I1{"Did every batch fail?"}
+    I1 -->|yes| X["HTTP 502 { detail, doc_id, indexed_chunks }"]
+    I1 -->|no| I2["Merge successful batches, de-duplicate by (type, snippet),<br/>keep the highest confidence"]
+    I2 --> J["Response: { doc_id, indexed_chunks, findings, warning }<br/>(warning set if some batches failed)"]
 
     A -->|"POST /ask (doc_id, question, top_k = 5)"| K["Embed the question (all-MiniLM-L6-v2)"]
     K --> K2["collection.query(): top_k nearest chunks<br/>where doc_id = this doc (cosine distance)"]
-    K2 --> L["Groq: llama-3.3-70b-versatile<br/>retrieved chunks + question"]
-    L --> M["Response: { answer, retrieved_chunk_ids }"]
+    K2 --> L["Groq: GROQ_MODEL<br/>retrieved chunks + question"]
+    L --> M["Response: { answer, retrieved_chunk_ids, warning }<br/>(HTTP 502 if the LLM call fails or the answer is empty)"]
 ```
 
 ### How ChromaDB and the embedding model are used
@@ -120,12 +122,14 @@ cp .env.example .env
 ```dotenv
 # .env
 GROQ_API_KEY=your_groq_api_key_here
+# GROQ_MODEL=openai/gpt-oss-120b
 ```
 
 Optional settings, also read from the environment:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Groq model for both detection and `/ask`. Empty means the default |
 | `CHROMA_DIR` | `./db` | Where the Chroma database is stored |
 | `RAG_TOP_K` | `5` | Chunks `/ask` retrieves when the request has no `top_k` |
 | `DETECT_BATCH_CHARS` | `4000` | Max characters of chunk text per detection LLM call |
@@ -172,6 +176,7 @@ Example response (the `findings` come from the LLM, so exact items and confidenc
 {
   "doc_id": "3f1c9a5e-8a1b-4a53-9c0e-2b6f7d1e4a90",
   "indexed_chunks": 1,
+  "warning": null,
   "findings": [
     { "type": "HRCI", "text_snippet": "Salary: $102,000", "category": "salary", "confidence": 0.95 },
     { "type": "NPPI", "text_snippet": "123-45-6789", "category": "SSN", "confidence": 0.98 },
@@ -180,7 +185,8 @@ Example response (the `findings` come from the LLM, so exact items and confidenc
 }
 ```
 
-Each finding has the shape the prompt asks the model for: `type` (`"HRCI"` or `"NPPI"`), `text_snippet`,
+`warning` is `null` when every part of the file was scanned (see the errors table below). Each finding has the
+shape the prompt asks the model for: `type` (`"HRCI"` or `"NPPI"`), `text_snippet`,
 `category` and `confidence` (0.0–1.0). The server doesn't validate or filter these fields, and the prompt
 explicitly asks the model to include low-confidence items.
 
@@ -196,8 +202,37 @@ Errors:
 | --- | --- |
 | Extension not `.txt` / `.xlsx` / `.xls` | `400` `{"detail": "Unsupported file type. Allowed: .txt, .xlsx, .xls"}` |
 | Excel file that can't be opened | `400` `{"detail": "Unable to open Excel file: ..."}` |
-| Empty file | `200` with `indexed_chunks: 0` and `findings: []` (the LLM isn't called) |
-| An LLM call fails, or its reply has no parseable JSON array | that batch contributes no findings, and the other batches are still used (the error goes to the server log) |
+| Empty file | `200` with `indexed_chunks: 0`, `findings: []` and `warning: null` (the LLM isn't called) |
+| The LLM finds nothing (replies `[]`) | `200` with `findings: []` and `warning: null`: a clean result |
+| **Every** detection batch fails (LLM error such as a retired model, an empty reply, or a reply with no JSON array) | `502` with `detail` explaining that the file was NOT scanned, plus `doc_id` and `indexed_chunks`. No `findings` key, and no findings record is stored |
+| **Some** batches fail | `200` with the findings from the batches that worked and a `warning` saying how many parts of the file weren't scanned and why |
+
+A failed batch is never treated as "no findings". The error message names the model and the reason, for example:
+
+```json
+{
+  "detail": "LLM detection failed for every part of the file (1 of 1), so the file was NOT scanned. Model 'openai/gpt-oss-120b', batch 1/1: HTTP 404: The model `openai/gpt-oss-120b` does not exist or you do not have access to it.",
+  "doc_id": "3f1c9a5e-8a1b-4a53-9c0e-2b6f7d1e4a90",
+  "indexed_chunks": 1
+}
+```
+
+If you see a `does not exist` error, Groq has retired or renamed the model. Set `GROQ_MODEL` to a current model
+from Groq's model list and restart. The web UI shows the error in red, clears the findings table so an old
+result can't be mistaken for this file, and shows any `warning` in amber above the results.
+
+#### Parsing the model's reply
+
+The prompt asks for only a JSON array, and `[]` when nothing matches. `openai/gpt-oss-120b` is a reasoning
+model, so the parser (`rag.extract_json_array`) accepts:
+
+- a bare array,
+- an array in ```` ```json ```` fences,
+- an array with prose before or after it, even if that prose contains brackets,
+- a reply that includes a `<think>…</think>` reasoning block, whose contents are ignored.
+
+When several arrays appear, it uses the last one whose items are all objects. A reply with no array counts as a
+failed batch, not as "no findings".
 
 ### `POST /ask`
 
@@ -220,12 +255,19 @@ curl -F "doc_id=3f1c9a5e-8a1b-4a53-9c0e-2b6f7d1e4a90" -F "question=show only NPP
 ```json
 {
   "answer": "- **123-45-6789** (SSN-like number, NPPI)",
-  "retrieved_chunk_ids": ["3f1c9a5e-8a1b-4a53-9c0e-2b6f7d1e4a90_0"]
+  "retrieved_chunk_ids": ["3f1c9a5e-8a1b-4a53-9c0e-2b6f7d1e4a90_0"],
+  "warning": null
 }
 ```
 
-If no chunks exist for `doc_id`, the response is `{"answer": "No document found.", "retrieved_chunk_ids": []}` and
-the LLM isn't called. The answer is free text from the model, not structured JSON.
+If no chunks exist for `doc_id`, the response is `{"answer": "No document found.", "retrieved_chunk_ids": [],
+"warning": null}` and the LLM isn't called. The answer is free text from the model, not structured JSON.
+
+| Case | Result |
+| --- | --- |
+| LLM call fails (for example, a retired model) | `502` with `detail` naming the model and the reason, plus `retrieved_chunk_ids` |
+| LLM returns an empty answer | `502` with `detail` |
+| Answer cut off at the model's output token limit (`finish_reason: "length"`) | `200` with the partial `answer` and a `warning` |
 
 ### `GET /`
 
@@ -248,7 +290,14 @@ pytest
 The tests cover:
 
 - `tests/test_parser.py`: the JSON recovery parser (clean JSON, JSON inside markdown fences, JSON surrounded
-  by prose, broken JSON, non-array JSON).
+  by prose, broken JSON, non-array JSON). It also covers reasoning-model output: `<think>` blocks, brackets in the
+  prose before or after the answer, an earlier format example, channel markers, and telling `[]` apart from
+  "no array".
+- `tests/test_llm_errors.py`: `GROQ_MODEL` (default, empty, custom, used by both endpoints). Also failures that
+  use the Groq SDK's real `NotFoundError` for a retired model:
+  - every batch failing returns `502` and stores no findings record,
+  - some batches failing returns findings plus a `warning`,
+  - `/ask` returns `502` for an LLM error or empty answer, and a `warning` for a cut-off answer.
 - `tests/test_api.py`: `/upload` for `.txt` and `.xlsx` (including multi-sheet and header rows), unsupported and
   corrupt files, LLM failures and unparseable replies, `/ask` (answers, per-document scoping, unknown `doc_id`,
   missing fields) and serving the UI.
@@ -275,9 +324,9 @@ GitHub Actions (`.github/workflows/tests.yml`) runs on every push and pull reque
 
 `scripts/measure_memory.py` starts the real server (`uvicorn api:app`, one worker) and uploads a
 10,000-character `.txt` file, then sends one `/ask` request. After each step it reads the process's peak
-resident memory (`VmHWM`). The embedding model is real. The Groq client is pointed at an unreachable local
-address, so no LLM request leaves the machine. A real Groq call adds only an HTTP request and response, which
-this measurement doesn't include.
+resident memory (`VmHWM`). The embedding model is real. The Groq client is pointed at a tiny fake
+chat-completions server started by the script, which answers `[]` and a short text. So both requests take their
+normal success path, and no LLM request leaves the machine.
 
 ```bash
 python scripts/measure_memory.py              # default: 10,000 characters, limit 350 MB
@@ -311,15 +360,17 @@ These describe what the code does today.
   limits.
 - **`/ask` only sees the retrieved chunks.** Answers are based on the `top_k` chunks most similar to the
   question. Requests that need the whole document, such as "summarize" or "list every SSN", only cover those
-  chunks. The `/ask` endpoint doesn't use the stored findings. A Groq error on `/ask` returns HTTP 500.
+  chunks. The `/ask` endpoint doesn't use the stored findings.
 - **Similarity isn't a relevance guarantee.** MiniLM embeddings capture topical similarity. A query like "show only
   NPPI" may not rank the chunk holding a bare account number highest.
 - **Detection is entirely LLM-based and not deterministic.** Findings can miss items, include false positives,
   or vary between runs. Nothing validates the findings against the source text, and there is no confidence
   threshold.
-- **Failures look like clean results.** If a detection call fails or its reply can't be parsed, that batch is
-  silently skipped. `/upload` still returns `200`, and the response doesn't say that part of the file wasn't
-  scanned.
+- **Partial scans are possible.** If some detection batches fail, `/upload` still returns `200` with the other
+  batches' findings. Check `warning`: it says how many parts weren't scanned. Failed batches aren't retried.
+- **The default model can be retired.** Groq retires models. When that happens, uploads return `502` and `/ask`
+  returns `502` until `GROQ_MODEL` is set to a current model. The prompt and parser are tested against mocked
+  replies only, not against the live model.
 - **Document text is sent to a third-party API.** Uploaded content leaves your machine and goes to Groq. Use only
   synthetic or approved data.
 - **Nothing is ever deleted.** Chunks, findings (`./db`), uploaded files and their extracted-text copies

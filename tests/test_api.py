@@ -50,10 +50,11 @@ def test_upload_txt_returns_parsed_findings(client, fake_llm, tmp_path):
     uuid.UUID(body["doc_id"])  # valid UUID
     assert body["indexed_chunks"] == 1
     assert body["findings"] == FINDINGS
+    assert body["warning"] is None
 
     # One LLM call, with the document text in the prompt
     assert len(fake_llm.calls) == 1
-    assert fake_llm.calls[0]["model"] == "llama-3.3-70b-versatile"
+    assert fake_llm.calls[0]["model"] == "openai/gpt-oss-120b"
     prompt = fake_llm.last_user_prompt()
     assert "Salary: $102,000" in prompt
     assert "123-45-6789" in prompt
@@ -113,31 +114,43 @@ def test_upload_empty_file_skips_llm(client, fake_llm):
     assert fake_llm.calls == []
 
 
-def test_upload_with_unparseable_llm_output_returns_no_findings(client, fake_llm):
+def test_upload_with_unparseable_llm_output_is_an_error(client, fake_llm):
     fake_llm.reply = "Sure! Here is what I found: SSN 123-45-6789"
 
     res = upload(client, "employee.txt", TXT_DOC.encode(), "text/plain")
 
-    assert res.status_code == 200
-    assert res.json()["findings"] == []
+    assert res.status_code == 502
+    assert "no JSON array" in res.json()["detail"]
+    assert "findings" not in res.json()
 
 
-def test_upload_with_empty_llm_content_returns_no_findings(client, fake_llm):
+def test_upload_with_empty_llm_content_is_an_error(client, fake_llm):
     fake_llm.reply = None
 
     res = upload(client, "employee.txt", TXT_DOC.encode(), "text/plain")
 
-    assert res.status_code == 200
-    assert res.json()["findings"] == []
+    assert res.status_code == 502
+    assert "empty reply" in res.json()["detail"]
 
 
-def test_upload_when_llm_call_fails_returns_no_findings(client, fake_llm):
+def test_upload_when_llm_call_fails_is_an_error(client, fake_llm):
     fake_llm.error = RuntimeError("Groq is down")
 
     res = upload(client, "employee.txt", TXT_DOC.encode(), "text/plain")
 
+    assert res.status_code == 502
+    assert "Groq is down" in res.json()["detail"]
+    assert "findings" not in res.json()
+
+
+def test_upload_where_llm_finds_nothing_is_a_clean_result(client, fake_llm):
+    fake_llm.reply = "[]"
+
+    res = upload(client, "memo.txt", b"The office picnic is on Friday.", "text/plain")
+
     assert res.status_code == 200
     assert res.json()["findings"] == []
+    assert res.json()["warning"] is None
 
 
 # ---------------------------------------------------------------- /ask
@@ -153,10 +166,11 @@ def test_ask_answers_with_document_context(client, fake_llm):
     assert res.json() == {
         "answer": "- **Salary: $102,000** (HRCI)",
         "retrieved_chunk_ids": [f"{doc_id}_0"],
+        "warning": None,
     }
 
     call = fake_llm.calls[-1]
-    assert call["model"] == "llama-3.3-70b-versatile"
+    assert call["model"] == "openai/gpt-oss-120b"
     prompt = fake_llm.last_user_prompt()
     assert "show only HRCI" in prompt
     assert "Salary: $102,000" in prompt
@@ -177,7 +191,7 @@ def test_ask_unknown_document_does_not_call_llm(client, fake_llm):
     res = client.post("/ask", data={"doc_id": "does-not-exist", "question": "summarize"})
 
     assert res.status_code == 200
-    assert res.json() == {"answer": "No document found.", "retrieved_chunk_ids": []}
+    assert res.json() == {"answer": "No document found.", "retrieved_chunk_ids": [], "warning": None}
     assert fake_llm.calls == []
 
 
