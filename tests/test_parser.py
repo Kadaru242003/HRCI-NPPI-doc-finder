@@ -59,3 +59,53 @@ def test_empty_string_returns_empty_list():
 def test_json_object_is_not_accepted_as_findings():
     # Only a top-level array (or an array embedded in the text) counts.
     assert _parse_json_from_text('{"type": "HRCI"}') == []
+
+
+# ---------------------------------------------------------------- reasoning-model output
+# openai/gpt-oss-120b is a reasoning model. Groq returns the final answer in
+# message.content, but replies can still carry a preamble, fences, reasoning
+# tags or brackets in prose, so the parser must find the findings array.
+
+from rag import extract_json_array  # noqa: E402
+
+
+def test_reasoning_block_with_arrays_is_ignored():
+    raw = (
+        "<think>The schema is [type, text_snippet]. Maybe [1, 2]? Output must be an array.</think>\n"
+        + FINDINGS_JSON
+    )
+    assert _parse_json_from_text(raw) == FINDINGS
+
+
+def test_prose_with_brackets_before_fenced_answer():
+    raw = (
+        "Here is the JSON array [as requested], confidences are in [0, 1]:\n\n"
+        f"```json\n{FINDINGS_JSON}\n```"
+    )
+    assert _parse_json_from_text(raw) == FINDINGS
+
+
+def test_note_with_brackets_after_the_answer():
+    raw = f"{FINDINGS_JSON}\n\nNote: confidence values are in the range [0.0, 1.0]."
+    assert _parse_json_from_text(raw) == FINDINGS
+
+
+def test_last_findings_array_wins_over_an_earlier_example():
+    example = '[{"type": "HRCI", "text_snippet": "<exact substring>", "category": "x", "confidence": 0.5}]'
+    raw = f"Format example: {example}\nAnswer:\n{FINDINGS_JSON}"
+    assert _parse_json_from_text(raw) == FINDINGS
+
+
+def test_channel_markers_around_the_answer():
+    raw = f"<|channel|>final<|message|>{FINDINGS_JSON}<|end|>"
+    assert _parse_json_from_text(raw) == FINDINGS
+
+
+def test_empty_array_answer_is_distinguished_from_no_answer():
+    assert extract_json_array("[]") == []
+    assert extract_json_array("```json\n[]\n```") == []
+    assert extract_json_array("No sensitive data found.") is None
+    assert extract_json_array("") is None
+    assert extract_json_array(None) is None
+    assert extract_json_array("<think>[1, 2]</think>") is None
+    assert extract_json_array('[{"type": "HRCI", "text_snippet": ') is None
