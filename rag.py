@@ -169,8 +169,8 @@ def detect_hrci_nppi(doc_id: str):
         print("Groq error in detect_hrci_nppi:", e)
         return []
 
-    # Groq SDK: message.content is an attribute, not a dict
-    raw = completion.choices[0].message.content.strip()
+    # Groq SDK: message.content is an attribute, not a dict (and may be None)
+    raw = (completion.choices[0].message.content or "").strip()
 
     print("\n=== RAW MODEL OUTPUT (detect_hrci_nppi) ===\n")
     print(raw)

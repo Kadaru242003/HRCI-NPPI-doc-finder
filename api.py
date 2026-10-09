@@ -70,7 +70,10 @@ async def upload_file(file: UploadFile = File(...)):
         f.write(contents)
 
     # Index text into vector DB
-    index_info = index_file(save_path, doc_id=doc_id)
+    try:
+        index_info = index_file(save_path, doc_id=doc_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # Run HRCI / NPPI detection (uses Groq inside rag.py)
     findings = detect_hrci_nppi(doc_id)
