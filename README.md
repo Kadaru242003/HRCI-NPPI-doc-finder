@@ -46,10 +46,26 @@ flowchart TD
     L --> M["Response: { answer, retrieved_chunk_ids }"]
 ```
 
-### How ChromaDB and Sentence Transformers are used
+### How ChromaDB and the embedding model are used
 
-`store.py` owns a single `chromadb.PersistentClient` and the `all-MiniLM-L6-v2` model, and ingest and rag
-both use them. The collection (`documents`) uses cosine distance and holds two kinds of records, told apart by
+`store.py` owns a single `chromadb.PersistentClient` and the `all-MiniLM-L6-v2` embedder, and ingest and rag
+both use them.
+
+The embedder is ChromaDB's bundled ONNX build of `sentence-transformers/all-MiniLM-L6-v2`
+(`chromadb.utils.embedding_functions.ONNXMiniLM_L6_V2`). It runs on ONNX Runtime, so **PyTorch and
+sentence-transformers aren't installed**. It applies the same steps as sentence-transformers: the model's
+tokenizer, truncation at 256 tokens, attention-masked mean pooling and L2 normalization, giving 384-dimension
+vectors.
+
+- The embedder is created **lazily, once per process**, on the first upload or question. Importing the app
+  and starting the server don't load it.
+- On first use, it downloads the model (an 80 MB archive, checked against a SHA-256 hash) from ChromaDB's
+  model host to `~/.cache/chroma/onnx_models/`. Later starts reuse that copy.
+- Texts are embedded one at a time (`EMBED_BATCH_SIZE = 1`). Every input is padded to 256 tokens, so larger
+  batches cost a lot of extra memory and, on CPU, aren't faster. See [Memory](#memory).
+
+The collection (`documents`) uses cosine distance and holds two kinds of records, told apart by the `kind`
+metadata field: The collection (`documents`) uses cosine distance and holds two kinds of records, told apart by
 the `kind` metadata field:
 
 | Record | id | Metadata | Used by |
@@ -70,11 +86,12 @@ the `kind` metadata field:
 
 ```
 api.py              FastAPI app: GET /, POST /upload, POST /ask, serves static/
-store.py            Persistent Chroma client/collection and the embedding model
+store.py            Persistent Chroma client/collection and the lazily loaded ONNX embedder
 ingest.py           Text extraction (txt / Excel), chunking, embedding, storing in Chroma
 rag.py              Retrieval, batched detection + de-duplication, Groq calls, JSON recovery parser
 static/index.html   Single-page UI (upload, findings table, chat box)
 tests/              pytest suite; Groq and the embedding model are mocked
+scripts/            measure_memory.py: peak RSS of a real server for one upload
 ```
 
 ---
@@ -92,8 +109,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-`requirements.txt` pulls in PyTorch through `sentence-transformers`. To skip the large CUDA build on a machine
-without a GPU, first run `pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu`.
+Nothing in `requirements.txt` pulls in PyTorch or a GPU build. Embeddings run on CPU with `onnxruntime`.
 
 Create a `.env` file from the example:
 
@@ -125,7 +141,8 @@ uvicorn api:app --env-file .env --reload
 ```
 
 Run this from the repository root, because the `static/` directory is resolved relative to the working
-directory. On first start, Sentence Transformers downloads `all-MiniLM-L6-v2` (about 90 MB) from the Hugging Face Hub.
+directory. The first upload or question after a fresh install downloads the embedding model (80 MB) to
+`~/.cache/chroma`, so it takes a few seconds longer.
 
 - Web UI: <http://localhost:8000/static/index.html>
 - Interactive API docs (FastAPI): <http://localhost:8000/docs>
@@ -218,8 +235,8 @@ A minimal HTML page with a link to the UI.
 
 ## Tests
 
-The test suite mocks the Groq client and the Sentence Transformers model, and blocks network sockets, so it needs no
-API key and no network access. The fake embedder is a deterministic bag-of-words vector, so texts that share words
+The test suite mocks the Groq client and the embedding model, and blocks network sockets, so it needs no
+API key, no network access and no model download. The fake embedder is a deterministic bag-of-words vector, so texts that share words
 are close, which makes retrieval results predictable. ChromaDB runs for real, as a persistent store in a temporary
 directory for each test.
 
@@ -242,8 +259,46 @@ The tests cover:
   - Text past 4,000 characters is detected, and every chunk reaches detection.
   - A span in a chunk overlap is reported once, and one failed batch doesn't drop the others.
   - The batching and merge helpers work.
+- `tests/test_store.py`: the embedder is created lazily and only once, texts are embedded in batches of
+  `EMBED_BATCH_SIZE` in order, and neither `torch` nor `sentence_transformers` is imported.
 
-GitHub Actions (`.github/workflows/tests.yml`) runs the suite on every push and pull request.
+GitHub Actions (`.github/workflows/tests.yml`) runs on every push and pull request. It:
+
+1. installs `requirements-dev.txt` and checks that PyTorch, sentence-transformers and transformers aren't
+   installed,
+2. runs the test suite,
+3. runs `scripts/measure_memory.py` with the real embedding model and fails if peak memory exceeds 350 MB.
+
+---
+
+## Memory
+
+`scripts/measure_memory.py` starts the real server (`uvicorn api:app`, one worker) and uploads a
+10,000-character `.txt` file, then sends one `/ask` request. After each step it reads the process's peak
+resident memory (`VmHWM`). The embedding model is real. The Groq client is pointed at an unreachable local
+address, so no LLM request leaves the machine. A real Groq call adds only an HTTP request and response, which
+this measurement doesn't include.
+
+```bash
+python scripts/measure_memory.py              # default: 10,000 characters, limit 350 MB
+python scripts/measure_memory.py --chars 100000
+```
+
+Measured on Linux with Python 3.10:
+
+| Step | Peak RSS |
+| --- | --- |
+| Server started (no model loaded yet) | 138 MB |
+| + upload of a 10,000-character file (13 chunks; includes downloading the model on the first run) | 287 MB |
+| + one `/ask` | 287 MB |
+| Same, with a 100,000-character file (125 chunks) | 286 MB |
+
+Peak memory doesn't grow with file size, because chunks are embedded one at a time. For comparison:
+
+- Importing the previous stack's libraries (PyTorch and sentence-transformers from PyPI, plus chromadb, pandas,
+  fastapi and groq) reached **653 MB** before any model was loaded. That is more than a 512 MB instance has.
+- Embedding the 13 chunks in one batch of 32 (ChromaDB's default) instead of one at a time raised the peak to
+  about 385 MB.
 
 ---
 
@@ -277,5 +332,7 @@ These describe what the code does today.
   their stored values.
 - **No authentication, upload size limit or rate limiting.** The whole upload is read into memory. Any client
   that knows a `doc_id` can query that document through `/ask`.
+- **The first request after a fresh deploy is slower.** On hosts with an ephemeral filesystem, the 80 MB
+  embedding model is downloaded again by the first upload or question after each restart.
 - **Single process only.** Chroma's embedded `PersistentClient` isn't designed for several processes writing to
   the same directory, so run a single uvicorn worker.
