@@ -1,17 +1,15 @@
 """Shared test setup.
 
-The app reads GROQ_API_KEY and loads a Sentence Transformers model at import
-time, so both are faked here *before* `api` / `rag` / `ingest` are imported.
-The Groq client is replaced with a fake, so tests need no API key and make no
-network calls.
+The app reads GROQ_API_KEY at import time, so it is set here *before* `api` /
+`rag` / `ingest` are imported. The Groq client and the (lazily loaded) ONNX
+embedding model are replaced with fakes, so tests need no API key, download no
+model and make no network calls.
 """
 import hashlib
 import os
 import re
 import socket
-import sys
 import tempfile
-import types
 from types import SimpleNamespace
 
 import numpy as np
@@ -28,8 +26,8 @@ os.environ["ANONYMIZED_TELEMETRY"] = "False"
 os.environ["CHROMA_DIR"] = tempfile.mkdtemp(prefix="riskbot-chroma-")
 
 
-class FakeSentenceTransformer:
-    """Stands in for all-MiniLM-L6-v2 so no model is downloaded.
+class FakeEmbedder:
+    """Stands in for the ONNX all-MiniLM-L6-v2 embedder so no model is downloaded.
 
     Bag-of-words vectors (each word hashed to a dimension), so texts sharing
     words are close under cosine distance and retrieval results are predictable.
@@ -37,21 +35,17 @@ class FakeSentenceTransformer:
 
     dim = 384
 
-    def __init__(self, *args, **kwargs):
-        pass
+    def __init__(self):
+        self.calls = []
 
-    def encode(self, texts):
+    def __call__(self, texts):
+        self.calls.append(list(texts))
         vectors = np.zeros((len(texts), self.dim))
         for row, text in enumerate(texts):
             vectors[row, 0] = 1e-3  # avoid all-zero vectors for word-less text
             for word in re.findall(r"[a-z0-9]+", text.lower()):
                 vectors[row, int(hashlib.md5(word.encode()).hexdigest(), 16) % self.dim] += 1.0
-        return vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
-
-
-_fake_st = types.ModuleType("sentence_transformers")
-_fake_st.SentenceTransformer = FakeSentenceTransformer
-sys.modules["sentence_transformers"] = _fake_st
+        return (vectors / np.linalg.norm(vectors, axis=1, keepdims=True)).tolist()
 
 import api  # noqa: E402
 import rag  # noqa: E402
@@ -94,6 +88,13 @@ def no_network(monkeypatch):
 
     monkeypatch.setattr(socket.socket, "connect", guard)
     monkeypatch.setattr(socket, "create_connection", guard)
+
+
+@pytest.fixture(autouse=True)
+def fake_embedder(monkeypatch):
+    embedder = FakeEmbedder()
+    monkeypatch.setattr(store, "_embedder", embedder)
+    return embedder
 
 
 @pytest.fixture
