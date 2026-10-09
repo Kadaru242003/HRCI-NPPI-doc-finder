@@ -112,7 +112,18 @@
     const chatSubmit = document.getElementById("chat-submit");
     const chatAnswerContent = document.getElementById("chat-answer-content");
 
+    // Model output can echo text from the uploaded file, so escape it before using innerHTML.
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
     function formatFilteredAnswer(answerText) {
+      answerText = escapeHtml(answerText);
       answerText = answerText.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
       answerText = answerText.replace(/^\s*-\s*(.*)$/gm, "<li>$1</li>");
 
@@ -147,8 +158,8 @@
 
         tr.innerHTML = `
           <td class="px-3 py-2 align-top">${badge}</td>
-          <td class="px-3 py-2 align-top text-slate-800">${item.category}</td>
-          <td class="px-3 py-2 align-top text-slate-800 whitespace-pre-wrap">${item.text_snippet}</td>
+          <td class="px-3 py-2 align-top text-slate-800">${escapeHtml(item.category)}</td>
+          <td class="px-3 py-2 align-top text-slate-800 whitespace-pre-wrap">${escapeHtml(item.text_snippet)}</td>
           <td class="px-3 py-2 align-top text-slate-600">
             ${(item.confidence * 100).toFixed(1)}%
           </td>
@@ -172,7 +183,12 @@
       formData.append("file", fileInput.files[0]);
 
       const res = await fetch("/upload", { method: "POST", body: formData });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        uploadStatus.textContent = `Upload failed: ${data.detail || res.statusText}`;
+        return;
+      }
 
       currentDocId = data.doc_id;
       lastFindings = data.findings || [];
@@ -198,7 +214,13 @@
       formData.append("question", message);
 
       const res = await fetch("/ask", { method: "POST", body: formData });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        chatAnswerContent.textContent = `Request failed: ${data.detail || res.statusText}`;
+        chatAnswer.classList.remove("hidden");
+        return;
+      }
 
       chatAnswerContent.innerHTML = formatFilteredAnswer(data.answer);
       chatAnswer.classList.remove("hidden");
