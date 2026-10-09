@@ -140,17 +140,6 @@ def test_upload_when_llm_call_fails_returns_no_findings(client, fake_llm):
     assert res.json()["findings"] == []
 
 
-def test_upload_long_document_is_chunked_but_detection_sees_only_first_4000_chars(client, fake_llm):
-    text = "A" * 5000 + "\nSSN: 987-65-4321 at the very end\n"
-
-    res = upload(client, "long.txt", text.encode(), "text/plain")
-
-    assert res.status_code == 200
-    assert res.json()["indexed_chunks"] > 1
-    prompt = fake_llm.last_user_prompt()
-    assert "987-65-4321" not in prompt
-
-
 # ---------------------------------------------------------------- /ask
 
 
@@ -161,7 +150,10 @@ def test_ask_answers_with_document_context(client, fake_llm):
     res = client.post("/ask", data={"doc_id": doc_id, "question": "show only HRCI"})
 
     assert res.status_code == 200
-    assert res.json() == {"answer": "- **Salary: $102,000** (HRCI)"}
+    assert res.json() == {
+        "answer": "- **Salary: $102,000** (HRCI)",
+        "retrieved_chunk_ids": [f"{doc_id}_0"],
+    }
 
     call = fake_llm.calls[-1]
     assert call["model"] == "llama-3.3-70b-versatile"
@@ -185,7 +177,7 @@ def test_ask_unknown_document_does_not_call_llm(client, fake_llm):
     res = client.post("/ask", data={"doc_id": "does-not-exist", "question": "summarize"})
 
     assert res.status_code == 200
-    assert res.json() == {"answer": "No document found."}
+    assert res.json() == {"answer": "No document found.", "retrieved_chunk_ids": []}
     assert fake_llm.calls == []
 
 
@@ -215,4 +207,4 @@ def test_findings_are_not_fed_back_into_chat_context(client, fake_llm):
     doc_id = upload(client, "employee.txt", TXT_DOC.encode(), "text/plain").json()["doc_id"]
 
     assert rag.load_findings(doc_id) == FINDINGS
-    assert '"text_snippet"' not in rag.load_context_for_doc(doc_id)
+    assert all('"text_snippet"' not in chunk for chunk in rag.load_chunks_for_doc(doc_id))

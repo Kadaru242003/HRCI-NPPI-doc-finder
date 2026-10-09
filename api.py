@@ -6,7 +6,7 @@ import uuid
 import json
 
 from ingest import index_file
-from rag import detect_hrci_nppi, load_context_for_doc  # load_findings is available too if you ever want it
+from rag import DEFAULT_TOP_K, detect_hrci_nppi, retrieve_chunks
 
 # ---------------------------------------------------------
 #  GROQ CLIENT (GLOBAL)
@@ -95,24 +95,30 @@ async def upload_file(file: UploadFile = File(...)):
 # 2️⃣ CHATBOT ENDPOINT (GROQ)
 # ---------------------------------------------------------
 @app.post("/ask")
-async def ask_question(doc_id: str = Form(...), question: str = Form(...)):
+async def ask_question(
+    doc_id: str = Form(...),
+    question: str = Form(...),
+    top_k: int = Form(DEFAULT_TOP_K, ge=1, le=50),
+):
     """
     Chatbot endpoint:
-    - Loads doc context
-    - Uses GROQ Llama model to answer user instructions
+    - Embeds the question and retrieves the top_k most similar chunks of this doc
+    - Uses GROQ Llama model to answer user instructions from those chunks only
     - Supports prompts like:
       'show only HRCI', 'show only NPPI', 'show only salary', etc.
     """
 
-    context = load_context_for_doc(doc_id)
+    chunks = retrieve_chunks(doc_id, question, top_k)
 
-    if not context.strip():
-        return JSONResponse(content={"answer": "No document found."})
+    if not chunks:
+        return JSONResponse(content={"answer": "No document found.", "retrieved_chunk_ids": []})
+
+    context = "\n---\n".join(chunk["text"] for chunk in chunks)
 
     prompt = f"""
 You are an assistant helping users analyze sensitive HR/Finance text.
 
-Document Context:
+Document Context (the excerpts most relevant to the question):
 ------------------
 {context}
 
@@ -141,5 +147,8 @@ Filtering Rules:
     # Groq SDK: message.content, not ["content"]
     answer = completion.choices[0].message.content
 
-    return JSONResponse(content={"answer": answer})
+    return JSONResponse(content={
+        "answer": answer,
+        "retrieved_chunk_ids": [chunk["id"] for chunk in chunks],
+    })
 
