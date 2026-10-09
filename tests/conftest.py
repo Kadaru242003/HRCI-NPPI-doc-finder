@@ -61,6 +61,7 @@ class FakeLLM:
     def __init__(self):
         self.reply = "[]"
         self.error = None
+        self.finish_reason = "stop"
         self.calls = []
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
@@ -70,7 +71,8 @@ class FakeLLM:
             raise self.error
         reply = self.reply(kwargs["messages"]) if callable(self.reply) else self.reply
         message = SimpleNamespace(content=reply)
-        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+        choice = SimpleNamespace(message=message, finish_reason=self.finish_reason)
+        return SimpleNamespace(choices=[choice])
 
     def last_user_prompt(self):
         return self.calls[-1]["messages"][-1]["content"]
@@ -119,3 +121,20 @@ def client(monkeypatch, tmp_path, fake_llm, chroma_dir):
 
     monkeypatch.setattr(api, "UPLOAD_DIR", str(tmp_path))
     return TestClient(api.app)
+
+
+def groq_model_not_found(model="llama-3.3-70b-versatile"):
+    """The exception the Groq SDK raises for a retired or unknown model."""
+    import groq
+    import httpx
+
+    body = {
+        "error": {
+            "message": f"The model `{model}` does not exist or you do not have access to it.",
+            "type": "invalid_request_error",
+            "code": "model_not_found",
+        }
+    }
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    response = httpx.Response(404, request=request, json=body)
+    return groq.NotFoundError(f"Error code: 404 - {body}", response=response, body=body)

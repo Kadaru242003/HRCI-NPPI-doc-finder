@@ -5,21 +5,25 @@ question, and reads the server's peak resident set size (VmHWM in
 /proc/<pid>/status) after each step. Exits non-zero if the peak exceeds
 --limit-mb.
 
-The Groq client is pointed at an unreachable local address, so no LLM request
-leaves the machine: detection and /ask fail fast and are handled as they would
-be on a Groq outage. The embedding model is real; on the first run it is
-downloaded to ~/.cache/chroma.
+The Groq client is pointed at a tiny fake chat-completions server started by
+this script, so no LLM request leaves the machine; it answers detection with
+"[]" and /ask with a short text, so both requests take their normal success
+path. The embedding model is real; on the first run it is downloaded to
+~/.cache/chroma.
 
 Usage (from the repository root):
     python scripts/measure_memory.py [--limit-mb 350] [--chars 10000]
 """
 import argparse
+import json
 import os
 import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import requests
 
@@ -45,6 +49,31 @@ def peak_rss_mb(pid: int) -> float:
     raise RuntimeError("VmHWM not found")
 
 
+class FakeGroq(BaseHTTPRequestHandler):
+    """Answers POST /openai/v1/chat/completions like Groq would, without an LLM."""
+
+    def log_message(self, *args):
+        pass
+
+    def do_POST(self):
+        request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        is_detection = "Text to label" in request["messages"][-1]["content"]
+        body = json.dumps({
+            "id": "fake", "object": "chat.completion", "created": 0, "model": request["model"],
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "[]" if is_detection else "A short answer."},
+                "finish_reason": "stop",
+            }],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
 def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -57,12 +86,17 @@ def main() -> int:
     parser.add_argument("--chars", type=int, default=10_000)
     args = parser.parse_args()
 
+    fake_groq = ThreadingHTTPServer(("127.0.0.1", 0), FakeGroq)
+    threading.Thread(target=fake_groq.serve_forever, daemon=True).start()
+
     port = free_port()
     base = f"http://127.0.0.1:{port}"
     env = {
         **os.environ,
-        "GROQ_API_KEY": os.environ.get("GROQ_API_KEY", "not-a-real-key"),
-        "GROQ_BASE_URL": "http://127.0.0.1:9",  # nothing listens here
+        "GROQ_API_KEY": "not-a-real-key",
+        "GROQ_BASE_URL": f"http://127.0.0.1:{fake_groq.server_address[1]}",
+        "NO_PROXY": "127.0.0.1,localhost",
+        "no_proxy": "127.0.0.1,localhost",
         "CHROMA_DIR": tempfile.mkdtemp(prefix="riskbot-mem-db-"),
         "ANONYMIZED_TELEMETRY": "False",
     }
@@ -108,11 +142,12 @@ def main() -> int:
         res = http.post(
             base + "/ask", data={"doc_id": body["doc_id"], "question": "salary"}, timeout=120
         )
-        # Groq is unreachable on purpose, so /ask returns 500 after retrieval + embedding ran.
-        results.append((f"+ one /ask (HTTP {res.status_code})", peak_rss_mb(server.pid)))
+        res.raise_for_status()
+        results.append(("+ one /ask", peak_rss_mb(server.pid)))
     finally:
         server.terminate()
         server.wait(timeout=30)
+        fake_groq.shutdown()
 
     print(f"Peak RSS of the uvicorn process (VmHWM), limit {args.limit_mb:.0f} MB:")
     for label, mb in results:

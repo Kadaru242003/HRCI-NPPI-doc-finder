@@ -28,6 +28,8 @@
         </form>
 
         <p id="upload-status" class="mt-3 text-sm text-slate-600"></p>
+        <p id="upload-warning" role="alert"
+          class="hidden mt-2 text-sm rounded-lg border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2"></p>
       </div>
 
       <!-- Chat card -->
@@ -57,6 +59,8 @@
         <div id="chat-answer" class="mt-4 hidden">
           <div class="bg-white shadow-sm border border-slate-200 rounded-xl p-4">
             <h3 class="text-md font-semibold text-slate-900 mb-2">Filtered Results</h3>
+            <p id="chat-warning" role="alert"
+              class="hidden mb-2 text-sm rounded-lg border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2"></p>
             <div id="chat-answer-content"
               class="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">
             </div>
@@ -111,6 +115,31 @@
     const chatAnswer = document.getElementById("chat-answer");
     const chatSubmit = document.getElementById("chat-submit");
     const chatAnswerContent = document.getElementById("chat-answer-content");
+    const uploadWarning = document.getElementById("upload-warning");
+    const chatWarning = document.getElementById("chat-warning");
+
+    const STATUS_CLASSES = {
+      info: "mt-3 text-sm text-slate-600",
+      error: "mt-3 text-sm rounded-lg border border-red-300 bg-red-50 text-red-800 px-3 py-2",
+    };
+
+    function setUploadStatus(text, kind = "info") {
+      uploadStatus.className = STATUS_CLASSES[kind];
+      uploadStatus.setAttribute("role", kind === "error" ? "alert" : "status");
+      uploadStatus.textContent = text;
+    }
+
+    function showWarning(el, text) {
+      el.textContent = text ? `Warning: ${text}` : "";
+      el.classList.toggle("hidden", !text);
+    }
+
+    // FastAPI returns `detail` as a string for our errors, or a list for validation errors.
+    function errorText(data, res) {
+      if (typeof data.detail === "string") return data.detail;
+      if (data.detail) return JSON.stringify(data.detail);
+      return `HTTP ${res.status} ${res.statusText}`;
+    }
 
     // Model output can echo text from the uploaded file, so escape it before using innerHTML.
     function escapeHtml(value) {
@@ -177,16 +206,31 @@
         return;
       }
 
-      uploadStatus.textContent = "Uploading…";
+      setUploadStatus("Uploading and scanning… (large files take longer)");
+      showWarning(uploadWarning, null);
 
       const formData = new FormData();
       formData.append("file", fileInput.files[0]);
 
-      const res = await fetch("/upload", { method: "POST", body: formData });
+      let res;
+      try {
+        res = await fetch("/upload", { method: "POST", body: formData });
+      } catch (err) {
+        setUploadStatus(`Upload failed: could not reach the server (${err.message}).`, "error");
+        return;
+      }
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        uploadStatus.textContent = `Upload failed: ${data.detail || res.statusText}`;
+        // Clear old results so a failed scan can't be mistaken for a clean file.
+        currentDocId = null;
+        lastFindings = [];
+        docIdDisplay.textContent = "(none yet)";
+        docIdDisplayBottom.textContent = "(none yet)";
+        chatSubmit.disabled = true;
+        findingsBody.innerHTML =
+          '<tr><td colspan="4" class="px-3 py-2 text-red-700">The file was not scanned. See the error above.</td></tr>';
+        setUploadStatus(`Upload failed: ${errorText(data, res)}`, "error");
         return;
       }
 
@@ -198,7 +242,8 @@
 
       chatSubmit.disabled = false;
 
-      uploadStatus.textContent = `Upload complete. Detected ${lastFindings.length} sensitive items.`;
+      setUploadStatus(`Upload complete. Detected ${lastFindings.length} sensitive items.`);
+      showWarning(uploadWarning, data.warning);
 
       renderFindings(lastFindings);
     });
@@ -217,11 +262,15 @@
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        chatAnswerContent.textContent = `Request failed: ${data.detail || res.statusText}`;
+        showWarning(chatWarning, null);
+        chatAnswerContent.innerHTML =
+          '<p class="rounded-lg border border-red-300 bg-red-50 text-red-800 px-3 py-2"></p>';
+        chatAnswerContent.firstChild.textContent = `Request failed: ${errorText(data, res)}`;
         chatAnswer.classList.remove("hidden");
         return;
       }
 
+      showWarning(chatWarning, data.warning);
       chatAnswerContent.innerHTML = formatFilteredAnswer(data.answer);
       chatAnswer.classList.remove("hidden");
     });

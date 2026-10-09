@@ -253,6 +253,7 @@ def test_one_failed_batch_does_not_drop_other_findings(client, fake_llm):
     body = upload(client, "flaky.txt", text)
 
     assert [f["text_snippet"] for f in body["findings"]] == ["111-22-3333"]
+    assert body["warning"].startswith("LLM detection failed for 1 of 2 parts of the file")
 
 
 # ---------------------------------------------------------------- helpers
