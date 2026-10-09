@@ -1,9 +1,8 @@
 import os
 import uuid
 import pandas as pd
-import chromadb
-from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
+
+import store
 
 def extract_text_from_excel(file_path: str) -> str:
     text_blocks = []
@@ -31,13 +30,6 @@ def extract_text_from_excel(file_path: str) -> str:
     # merge into one big text
     return "\n".join(text_blocks)
 
-
-CHROMA_DIR = "./db"
-EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
-
-client = chromadb.Client(Settings(persist_directory=CHROMA_DIR))
-collection = client.get_or_create_collection("documents")
-embedder = SentenceTransformer(EMBED_MODEL_NAME)
 
 def load_text_from_file(path: str) -> str:
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
@@ -90,6 +82,7 @@ def index_file(file_path: str, doc_id: str | None = None):
         docs.append(chunk)
         metas.append({
             "doc_id": doc_id,
+            "kind": "chunk",
             "chunk_index": i,
             "file_name": os.path.basename(file_path)
         })
@@ -97,8 +90,7 @@ def index_file(file_path: str, doc_id: str | None = None):
     if not docs:
         return {"doc_id": doc_id, "num_chunks": 0}
 
-    embeddings = embedder.encode(docs).tolist()
-    collection.add(ids=ids, documents=docs, metadatas=metas, embeddings=embeddings)
+    store.collection.add(ids=ids, documents=docs, metadatas=metas, embeddings=store.embed(docs))
 
     return {"doc_id": doc_id, "num_chunks": len(docs)}
 
