@@ -6,7 +6,8 @@ import uuid
 import json
 
 from ingest import index_file
-from rag import DEFAULT_TOP_K, detect_hrci_nppi, retrieve_chunks
+import rag
+from rag import DEFAULT_TOP_K, LLMError, describe_llm_error, detect_hrci_nppi, retrieve_chunks
 
 # ---------------------------------------------------------
 #  GROQ CLIENT (GLOBAL)
@@ -45,6 +46,7 @@ def startup_event():
     print(" 🚀 RiskBot is running!")
     print(" 🔗 Open the app in your browser:")
     print("     http://localhost:8000/static/index.html")
+    print(f" 🤖 LLM model (GROQ_MODEL): {rag.LLM_MODEL}")
     print("======================================\n")
 
 # ---------------------------------------------------------
@@ -76,12 +78,21 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(e))
 
     # Run HRCI / NPPI detection (uses Groq inside rag.py)
-    findings = detect_hrci_nppi(doc_id)
+    try:
+        detection = detect_hrci_nppi(doc_id)
+    except LLMError as e:
+        # Nothing was scanned: report an error instead of an empty (clean-looking) result
+        return JSONResponse(status_code=502, content={
+            "detail": str(e),
+            "doc_id": doc_id,
+            "indexed_chunks": index_info.get("num_chunks", 0),
+        })
 
     response = {
         "doc_id": doc_id,
         "indexed_chunks": index_info.get("num_chunks", 0),
-        "findings": findings
+        "findings": detection.findings,
+        "warning": detection.warning,
     }
 
     print("\n=== OUTGOING RESPONSE ===")
@@ -103,7 +114,7 @@ async def ask_question(
     """
     Chatbot endpoint:
     - Embeds the question and retrieves the top_k most similar chunks of this doc
-    - Uses GROQ Llama model to answer user instructions from those chunks only
+    - Uses the GROQ_MODEL LLM to answer user instructions from those chunks only
     - Supports prompts like:
       'show only HRCI', 'show only NPPI', 'show only salary', etc.
     """
@@ -111,7 +122,9 @@ async def ask_question(
     chunks = retrieve_chunks(doc_id, question, top_k)
 
     if not chunks:
-        return JSONResponse(content={"answer": "No document found.", "retrieved_chunk_ids": []})
+        return JSONResponse(content={"answer": "No document found.", "retrieved_chunk_ids": [], "warning": None})
+
+    retrieved_ids = [chunk["id"] for chunk in chunks]
 
     context = "\n---\n".join(chunk["text"] for chunk in chunks)
 
@@ -135,20 +148,38 @@ Filtering Rules:
 """
 
     # Call GROQ LLM
-    completion = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": "You are a helpful HR/Finance analysis assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.2,
-    )
+    try:
+        completion = groq_client.chat.completions.create(
+            model=rag.LLM_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a helpful HR/Finance analysis assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+        )
+    except Exception as e:
+        print("Groq error in /ask:", e)
+        return JSONResponse(status_code=502, content={
+            "detail": f"The LLM request failed (model '{rag.LLM_MODEL}'): {describe_llm_error(e)}",
+            "retrieved_chunk_ids": retrieved_ids,
+        })
 
     # Groq SDK: message.content, not ["content"]
-    answer = completion.choices[0].message.content
+    choice = completion.choices[0]
+    answer = (choice.message.content or "").strip()
+    if not answer:
+        return JSONResponse(status_code=502, content={
+            "detail": f"The LLM (model '{rag.LLM_MODEL}') returned an empty answer.",
+            "retrieved_chunk_ids": retrieved_ids,
+        })
+
+    warning = None
+    if getattr(choice, "finish_reason", None) == "length":
+        warning = "The answer was cut off because the model reached its output token limit."
 
     return JSONResponse(content={
         "answer": answer,
-        "retrieved_chunk_ids": [chunk["id"] for chunk in chunks],
+        "retrieved_chunk_ids": retrieved_ids,
+        "warning": warning,
     })
 

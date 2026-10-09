@@ -1,11 +1,15 @@
 import os
+import re
 import json
+from dataclasses import dataclass, field
 from groq import Groq
 
 import store
 
 # --- CONFIG ---
-LLM_MODEL = "llama-3.3-70b-versatile"
+# Groq model used for both detection and /ask
+DEFAULT_LLM_MODEL = "openai/gpt-oss-120b"
+LLM_MODEL = os.getenv("GROQ_MODEL", "").strip() or DEFAULT_LLM_MODEL
 # Max characters of chunk text sent to the LLM per detection call
 DETECT_BATCH_CHARS = int(os.getenv("DETECT_BATCH_CHARS", "4000"))
 # Number of chunks /ask retrieves when the request doesn't say
@@ -101,7 +105,7 @@ NPPI (Non-Public Personal Information) examples:
 - account / loan numbers
 - credit card numbers
 
-Return ONLY a JSON array. No explanation.
+Return ONLY a JSON array. No explanation. If nothing matches, return [].
 
 Each JSON object must be:
 {{
@@ -123,30 +127,72 @@ Text to label:
 # --------------------------------------------------------
 # JSON PARSER
 # --------------------------------------------------------
-def _parse_json_from_text(text: str):
-    text = text.strip()
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
-    # Try direct JSON parse
+
+def extract_json_array(text):
+    """Return the JSON array in a model reply, or None if there isn't one.
+
+    Handles a bare array, an array inside ```json fences, and an array
+    surrounded by prose. Reasoning text (a <think>...</think> block) is
+    ignored. When several arrays appear, the last one whose items are all
+    objects wins, since that is the shape of a findings list and a final
+    answer comes after any preamble.
+    """
+    text = _THINK_BLOCK.sub("", text or "").strip()
+    if not text:
+        return None
+
     try:
         obj = json.loads(text)
         if isinstance(obj, list):
             return obj
-    except Exception:
+    except ValueError:
         pass
 
-    # Try to extract array inside larger output
-    start = text.find("[")
-    end = text.rfind("]")
-    if start != -1 and end != -1:
-        snippet = text[start : end + 1]
+    decoder = json.JSONDecoder()
+    arrays, pos = [], text.find("[")
+    while pos != -1:
         try:
-            obj = json.loads(snippet)
-            if isinstance(obj, list):
-                return obj
-        except Exception:
-            pass
+            obj, end = decoder.raw_decode(text, pos)
+        except ValueError:
+            pos = text.find("[", pos + 1)
+            continue
+        if isinstance(obj, list):
+            arrays.append(obj)
+        pos = text.find("[", end)
 
-    return []
+    if not arrays:
+        return None
+    object_lists = [a for a in arrays if all(isinstance(item, dict) for item in a)]
+    return (object_lists or arrays)[-1]
+
+
+def _parse_json_from_text(text: str):
+    findings = extract_json_array(text)
+    return findings if findings is not None else []
+
+
+# --------------------------------------------------------
+# LLM error reporting
+# --------------------------------------------------------
+class LLMError(Exception):
+    """Raised when the LLM gives no usable result."""
+
+
+def describe_llm_error(error: Exception) -> str:
+    """Short, user-facing description of a Groq SDK exception."""
+    status = getattr(error, "status_code", None)
+    body = getattr(error, "body", None)
+    message = None
+    if isinstance(body, dict):
+        detail = body.get("error", body)
+        if isinstance(detail, dict):
+            message = detail.get("message")
+    if not message:
+        message = str(error) or type(error).__name__
+    text = f"HTTP {status}: {message}" if status else f"{type(error).__name__}: {message}"
+    return text[:300]
 
 
 # --------------------------------------------------------
@@ -195,7 +241,25 @@ def merge_findings(batches_of_findings) -> list:
     return list(merged.values())
 
 
+@dataclass
+class DetectionResult:
+    findings: list
+    total_batches: int
+    errors: list = field(default_factory=list)  # one entry per failed batch
+
+    @property
+    def warning(self):
+        if not self.errors:
+            return None
+        return (
+            f"LLM detection failed for {len(self.errors)} of {self.total_batches} parts "
+            f"of the file, so those parts were not scanned and findings from them are "
+            f"missing. {self.errors[0]}"
+        )
+
+
 def _detect_batch(text: str, label: str) -> list:
+    """Return the findings for one batch; raise LLMError if there is no usable result."""
     try:
         completion = groq_client.chat.completions.create(
             model=LLM_MODEL,
@@ -207,7 +271,7 @@ def _detect_batch(text: str, label: str) -> list:
         )
     except Exception as e:
         print(f"Groq error in detect_hrci_nppi ({label}):", e)
-        return []
+        raise LLMError(f"Model '{LLM_MODEL}', {label}: {describe_llm_error(e)}") from e
 
     # Groq SDK: message.content is an attribute, not a dict (and may be None)
     raw = (completion.choices[0].message.content or "").strip()
@@ -216,7 +280,11 @@ def _detect_batch(text: str, label: str) -> list:
     print(raw)
     print("\n===========================================\n")
 
-    return _parse_json_from_text(raw)
+    findings = extract_json_array(raw)
+    if findings is None:
+        reason = "empty reply" if not raw else "reply contained no JSON array"
+        raise LLMError(f"Model '{LLM_MODEL}', {label}: {reason}")
+    return findings
 
 
 # --------------------------------------------------------
@@ -228,18 +296,31 @@ def detect_hrci_nppi(doc_id: str):
     Fetches all of the document's chunks from Chroma, runs the Groq LLM on
     consecutive batches of them so the whole file is scanned, merges and
     de-duplicates the findings, and stores them back into Chroma.
+
+    Returns a DetectionResult; failed batches are listed in `errors`. Raises
+    LLMError if every batch failed, since then nothing was scanned.
     """
     chunks = load_chunks_for_doc(doc_id)
 
     if not chunks:
         print(f"No text found for document {doc_id}.")
-        return []
+        return DetectionResult(findings=[], total_batches=0)
 
     batches = batch_chunks(chunks)
-    findings = merge_findings(
-        _detect_batch(text, f"batch {i + 1}/{len(batches)}")
-        for i, text in enumerate(batches)
-    )
+    per_batch, errors = [], []
+    for i, text in enumerate(batches):
+        try:
+            per_batch.append(_detect_batch(text, f"batch {i + 1}/{len(batches)}"))
+        except LLMError as e:
+            errors.append(str(e))
+
+    if len(errors) == len(batches):
+        raise LLMError(
+            f"LLM detection failed for every part of the file ({len(batches)} of "
+            f"{len(batches)}), so the file was NOT scanned. {errors[0]}"
+        )
+
+    findings = merge_findings(per_batch)
 
     # Store findings in Chroma (read back by load_findings)
     try:
@@ -254,7 +335,7 @@ def detect_hrci_nppi(doc_id: str):
     except Exception as e:
         print("Failed to store findings in Chroma:", e)
 
-    return findings
+    return DetectionResult(findings=findings, total_batches=len(batches), errors=errors)
 
 
 # --------------------------------------------------------
