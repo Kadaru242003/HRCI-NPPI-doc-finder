@@ -86,7 +86,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 async def home():
     return HTMLResponse("""
-    <h2>RiskBot – HRCI / NPPI Analyzer</h2>
+    <h2>RiskBot: HRCI / NPPI Analyzer</h2>
     <p>Upload a file at <code>/upload</code> or open the chatbot UI at 
        <a href="/static/index.html">/static/index.html</a></p>
     """)
