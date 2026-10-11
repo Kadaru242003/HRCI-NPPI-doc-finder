@@ -1,0 +1,35 @@
+name: evaluate (manual)
+
+# Fills in the LLM columns of the README evaluation table. Needs a GROQ_API_KEY
+# repository secret (Groq free tier is enough: calls are paced and cached).
+# Download the "evaluation" artifact and commit README.md and eval/llm_cache/
+# so later runs, and CI's staleness check, reuse the cached replies at no cost.
+on:
+  workflow_dispatch:
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    env:
+      ANONYMIZED_TELEMETRY: "False"
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the evaluation and refresh the README table
+        run: python scripts/evaluate.py --write-readme
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evaluation
+          path: |
+            README.md
+            eval/llm_cache/
