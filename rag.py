@@ -1,12 +1,16 @@
+import json
+import logging
 import os
 import re
-import json
 from dataclasses import dataclass, field
 from groq import Groq
 
 import detectors
 import store
 from masking import mask_snippet
+
+# Logs carry counts and IDs only: never document text, model output or findings.
+log = logging.getLogger("riskbot")
 
 # --- CONFIG ---
 # Groq model used for both detection and /ask
@@ -365,20 +369,18 @@ def _detect_batch(text: str, label: str) -> list:
             temperature=0.2,
         )
     except Exception as e:
-        print(f"Groq error in detect_hrci_nppi ({label}):", e)
+        log.warning("LLM call failed (%s): %s", label, type(e).__name__)
         raise LLMError(f"Model '{LLM_MODEL}', {label}: {describe_llm_error(e)}") from e
 
     # Groq SDK: message.content is an attribute, not a dict (and may be None)
     raw = (completion.choices[0].message.content or "").strip()
 
-    print(f"\n=== RAW MODEL OUTPUT (detect_hrci_nppi, {label}) ===\n")
-    print(raw)
-    print("\n===========================================\n")
-
     findings = extract_json_array(raw)
     if findings is None:
         reason = "empty reply" if not raw else "reply contained no JSON array"
+        log.warning("LLM reply unusable (%s): %s, %d chars", label, reason, len(raw))
         raise LLMError(f"Model '{LLM_MODEL}', {label}: {reason}")
+    log.info("LLM batch done (%s): %d finding(s)", label, len(findings))
     return findings
 
 
@@ -398,7 +400,7 @@ def detect_hrci_nppi(doc_id: str):
     chunks = load_chunks_for_doc(doc_id)
 
     if not chunks:
-        print(f"No text found for document {doc_id}.")
+        log.info("doc %s: no text to scan", doc_id)
         return DetectionResult(findings=[], total_batches=0)
 
     result = scan_batches(batch_chunks(chunks))
@@ -422,7 +424,7 @@ def detect_hrci_nppi(doc_id: str):
             embeddings=emb,
         )
     except Exception as e:
-        print("Failed to store findings in Chroma:", e)
+        log.error("doc %s: storing findings failed: %s", doc_id, type(e).__name__)
 
     return result
 
@@ -468,38 +470,3 @@ def scan_batches(batches: list, use_llm: bool = True, use_rules: bool = True, gr
         errors=errors,
         ungrounded_dropped=dropped,
     )
-
-
-# --------------------------------------------------------
-# OPTIONAL: direct detection from arbitrary text (not used by UI now)
-# --------------------------------------------------------
-def detect_from_text(text: str):
-    if not text or not text.strip():
-        return []
-
-    text = text.strip()[:4000]
-
-    system_prompt = build_system_prompt()
-    user_prompt = build_user_prompt(text)
-
-    try:
-        completion = groq_client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.2,
-        )
-    except Exception as e:
-        print("Groq error in detect_from_text:", e)
-        return []
-
-    raw = completion.choices[0].message.content.strip()
-
-    print("\n=== RAW MODEL OUTPUT (direct) ===\n")
-    print(raw)
-    print("\n=================================\n")
-
-    return _parse_json_from_text(raw)
-

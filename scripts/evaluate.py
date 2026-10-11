@@ -255,6 +255,9 @@ def main():
     parser.add_argument("--write-readme", action="store_true")
     parser.add_argument("--check-readme", action="store_true")
     args = parser.parse_args()
+    import logging
+
+    logging.getLogger("riskbot").setLevel(logging.ERROR)  # per-batch cache misses are summarized below
 
     allow_calls = not (args.no_llm_calls or args.check_readme)
     docs, results, llm_complete, client = evaluate(args.split, allow_calls, args.min_interval)
