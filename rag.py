@@ -21,12 +21,18 @@ LLM_MODEL = os.getenv("GROQ_MODEL", "").strip() or DEFAULT_LLM_MODEL
 DETECT_BATCH_CHARS = int(os.getenv("DETECT_BATCH_CHARS", "4000"))
 # Number of chunks /ask retrieves when the request doesn't say
 DEFAULT_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
+# Retries per detection batch (rate limits, server errors, unusable replies)
+LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))
+LLM_RETRY_BASE_SECONDS = 1.0  # exponential backoff: 1, 2, 4, ... seconds
+LLM_MAX_RETRY_WAIT = 30.0  # cap for a single wait, including Retry-After
+LLM_RETRY_SLEEP = time.sleep  # replaced in tests
 
 # --- GROQ CLIENT ---
 GROQ_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_KEY:
     raise Exception("Missing GROQ_API_KEY environment variable!")
-groq_client = Groq(api_key=GROQ_KEY)
+# Retries are done explicitly in _detect_batch (also for unusable replies), not by the SDK
+groq_client = Groq(api_key=GROQ_KEY, max_retries=0)
 
 
 def _chunk_filter(doc_id: str) -> dict:
@@ -346,43 +352,93 @@ class DetectionResult:
     total_batches: int
     errors: list = field(default_factory=list)  # one entry per failed LLM batch
     ungrounded_dropped: int = 0  # LLM findings whose snippet is not in the source text
+    retries: int = 0  # LLM retries across all batches
+
+    @property
+    def scan(self) -> dict:
+        return {
+            "total_batches": self.total_batches,
+            "scanned_batches": self.total_batches - len(self.errors),
+            "failed_batches": len(self.errors),
+            "retries": self.retries,
+        }
 
     @property
     def warning(self):
         if not self.errors:
             return None
         return (
-            f"LLM detection failed for {len(self.errors)} of {self.total_batches} parts "
-            f"of the file, so those parts were not scanned and findings from them are "
-            f"missing. {self.errors[0]}"
+            f"Partial scan: the LLM scanned {self.total_batches - len(self.errors)} of "
+            f"{self.total_batches} parts of the file. {len(self.errors)} part(s) failed after "
+            f"{LLM_MAX_RETRIES} retries, so HRCI findings from them are missing (the rule-based "
+            f"NPPI checks still covered the whole file). {self.errors[0]}"
         )
 
 
-def _detect_batch(text: str, label: str) -> list:
-    """Return the findings for one batch; raise LLMError if there is no usable result."""
+def _retry_wait(error, attempt: int):
+    """Seconds to wait before retrying after `error`, or None if it is not worth retrying."""
+    status = getattr(error, "status_code", None)
+    if isinstance(error, LLMError):  # empty or unparseable reply
+        retryable = True
+    elif status is not None:
+        retryable = status == 429 or status >= 500
+    else:  # connection errors and timeouts have no status code
+        retryable = type(error).__name__ in ("APIConnectionError", "APITimeoutError")
+    if not retryable:
+        return None
+    headers = getattr(getattr(error, "response", None), "headers", None) or {}
     try:
-        completion = groq_client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[
-                {"role": "system", "content": build_system_prompt()},
-                {"role": "user", "content": build_user_prompt(text)},
-            ],
-            temperature=0.2,
-        )
-    except Exception as e:
-        log.warning("LLM call failed (%s): %s", label, type(e).__name__)
-        raise LLMError(f"Model '{LLM_MODEL}', {label}: {describe_llm_error(e)}") from e
+        retry_after = float(headers.get("retry-after"))
+    except (TypeError, ValueError):
+        retry_after = None
+    wait = retry_after if retry_after is not None else LLM_RETRY_BASE_SECONDS * 2 ** attempt
+    return min(max(wait, 0.0), LLM_MAX_RETRY_WAIT)
 
+
+def _call_llm_once(text: str, label: str) -> list:
+    """One LLM call for one batch; raises the SDK error, or LLMError for an unusable reply."""
+    completion = groq_client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[
+            {"role": "system", "content": build_system_prompt()},
+            {"role": "user", "content": build_user_prompt(text)},
+        ],
+        temperature=0.2,
+    )
     # Groq SDK: message.content is an attribute, not a dict (and may be None)
     raw = (completion.choices[0].message.content or "").strip()
-
     findings = extract_json_array(raw)
     if findings is None:
         reason = "empty reply" if not raw else "reply contained no JSON array"
         log.warning("LLM reply unusable (%s): %s, %d chars", label, reason, len(raw))
         raise LLMError(f"Model '{LLM_MODEL}', {label}: {reason}")
-    log.info("LLM batch done (%s): %d finding(s)", label, len(findings))
     return findings
+
+
+def _detect_batch(text: str, label: str, stats: dict = None) -> list:
+    """Findings for one batch, retrying transient failures with exponential backoff.
+
+    Rate limits (429, honoring Retry-After), server errors, connection errors and
+    unusable replies are retried up to LLM_MAX_RETRIES times. Permanent errors
+    (e.g. 404 model_not_found, 401) fail at once. Raises LLMError when no usable
+    result was obtained.
+    """
+    for attempt in range(LLM_MAX_RETRIES + 1):
+        try:
+            findings = _call_llm_once(text, label)
+            log.info("LLM batch done (%s): %d finding(s), %d retr%s", label, len(findings), attempt, "y" if attempt == 1 else "ies")
+            return findings
+        except Exception as e:
+            wait = _retry_wait(e, attempt) if attempt < LLM_MAX_RETRIES else None
+            if wait is None:
+                log.warning("LLM call failed (%s) after %d attempt(s): %s", label, attempt + 1, type(e).__name__)
+                if isinstance(e, LLMError):
+                    raise
+                raise LLMError(f"Model '{LLM_MODEL}', {label}: {describe_llm_error(e)}") from e
+            log.info("LLM call failed (%s): %s, retrying in %.1fs", label, type(e).__name__, wait)
+            if stats is not None:
+                stats["retries"] = stats.get("retries", 0) + 1
+            LLM_RETRY_SLEEP(wait)
 
 
 # --------------------------------------------------------
@@ -449,14 +505,14 @@ def scan_batches(batches: list, use_llm: bool = True, use_rules: bool = True, gr
     from are dropped and counted. Pure function of the text (no storage), shared
     by the app and scripts/evaluate.py.
     """
-    per_batch, errors, dropped = [], [], 0
+    per_batch, errors, dropped, stats = [], [], 0, {"retries": 0}
     for i, text in enumerate(batches):
         label = f"batch {i + 1}/{len(batches)}"
         if use_rules:
             per_batch.append(detectors.detect(text))
         if use_llm:
             try:
-                llm_findings = [_normalize_llm_finding(f) for f in _detect_batch(text, label)]
+                llm_findings = [_normalize_llm_finding(f) for f in _detect_batch(text, label, stats)]
             except LLMError as e:
                 errors.append(str(e))
                 continue
@@ -470,4 +526,5 @@ def scan_batches(batches: list, use_llm: bool = True, use_rules: bool = True, gr
         total_batches=len(batches) if use_llm else 0,
         errors=errors,
         ungrounded_dropped=dropped,
+        retries=stats["retries"],
     )
