@@ -84,7 +84,9 @@ def test_upload_xlsx_includes_every_sheet_and_header_row(client, fake_llm):
     body = res.json()
     assert body["indexed_chunks"] == 1
     routing = {"type": "NPPI", "text_snippet": "021000021", "category": "routing_number", "confidence": 0.93, "source": "rule"}
-    assert body["findings"] == [EXPECTED[0], routing, EXPECTED[1]]
+    # The LLM's "Salary: $102,000" is not in the sheet (the cell is 102000), so grounding drops it
+    assert body["findings"] == [EXPECTED[0], routing]
+    assert body["ungrounded_dropped"] == 1
 
     prompt = fake_llm.last_user_prompt()
     for cell in ["Name", "SSN", "Salary", "Jane Doe", "123-45-6789", "102000"]:
