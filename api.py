@@ -7,6 +7,7 @@ import uuid
 
 from ingest import index_file
 from masking import mask_finding, mask_text
+import limits
 import retention
 import rag
 from rag import (
@@ -42,6 +43,34 @@ app = FastAPI()
 
 UPLOAD_DIR = "./data"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Multipart framing around the file; the exact file size is checked again after reading
+_MULTIPART_OVERHEAD = 64 * 1024
+
+
+@app.middleware("http")
+async def enforce_limits(request: Request, call_next):
+    """Rate limit /upload and /ask per client IP, and reject oversized uploads before reading them."""
+    if request.method == "POST" and request.url.path in ("/upload", "/ask"):
+        upload = request.url.path == "/upload"
+        per_minute = limits.UPLOADS_PER_MINUTE if upload else limits.ASKS_PER_MINUTE
+        key = limits.client_key(request.headers, request.client.host if request.client else "")
+        retry_after = limits.rate_limiter.check(request.url.path, key, per_minute)
+        if retry_after:
+            log.warning("rate limit hit on %s", request.url.path)
+            return JSONResponse(status_code=429, headers={"Retry-After": str(retry_after)}, content={
+                "detail": f"Too many requests to {request.url.path}: the limit is {per_minute} per minute. "
+                          f"Try again in {retry_after} seconds.",
+            })
+        length = request.headers.get("content-length")
+        if upload and length and length.isdigit() and int(length) > limits.MAX_UPLOAD_BYTES + _MULTIPART_OVERHEAD:
+            return JSONResponse(status_code=413, content={"detail": _too_large_message()})
+    return await call_next(request)
+
+
+def _too_large_message():
+    return f"The file is too large. The maximum upload size is {limits.MAX_UPLOAD_MB:g} MB."
+
 
 @app.middleware("http")
 async def purge_expired_documents(request: Request, call_next):
@@ -85,7 +114,13 @@ async def upload_file(file: UploadFile = File(...)):
             detail="Unsupported file type. Allowed: .txt, .xlsx, .xls"
         )
 
-    contents = await file.read()
+    contents = await file.read(limits.MAX_UPLOAD_BYTES + 1)
+    if len(contents) > limits.MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=_too_large_message())
+    try:
+        limits.check_content(ext, contents)
+    except limits.ContentError as e:
+        raise HTTPException(status_code=415, detail=str(e))
 
     doc_id = str(uuid.uuid4())
     save_path = os.path.join(UPLOAD_DIR, f"{doc_id}{ext}")

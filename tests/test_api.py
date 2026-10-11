@@ -1,4 +1,5 @@
 import io
+import zipfile
 import json
 import uuid
 
@@ -109,8 +110,20 @@ def test_upload_rejects_unsupported_extension(client, fake_llm):
     assert fake_llm.calls == []
 
 
-def test_upload_corrupt_xlsx_returns_400(client, fake_llm):
+def test_upload_non_spreadsheet_named_xlsx_returns_415(client, fake_llm):
     res = upload(client, "broken.xlsx", b"this is not a spreadsheet")
+
+    assert res.status_code == 415
+    assert "not a valid .xlsx" in res.json()["detail"]
+    assert fake_llm.calls == []
+
+
+def test_upload_unreadable_workbook_returns_400(client, fake_llm):
+    # Passes the content check (a ZIP with xl/workbook.xml) but is not a readable workbook
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("xl/workbook.xml", "<not really a workbook>")
+    res = upload(client, "broken.xlsx", buf.getvalue())
 
     assert res.status_code == 400
     assert "Unable to open Excel file" in res.json()["detail"]
