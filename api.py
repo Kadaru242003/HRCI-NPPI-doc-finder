@@ -260,7 +260,8 @@ Important:
 
     # Groq SDK: message.content, not ["content"]
     choice = completion.choices[0]
-    answer = mask_text((choice.message.content or "").strip(), findings)
+    # The answer is rendered as Markdown, so the masked values inserted into it are escaped
+    answer = mask_text((choice.message.content or "").strip(), findings, escape=rag.md_escape)
     if not answer:
         return JSONResponse(status_code=502, content={
             "detail": f"The LLM (model '{rag.LLM_MODEL}') returned an empty answer.",
