@@ -6,6 +6,7 @@ import uuid
 import json
 
 from ingest import index_file
+from masking import mask_finding, mask_text
 import rag
 from rag import (
     DEFAULT_TOP_K,
@@ -100,7 +101,8 @@ async def upload_file(file: UploadFile = File(...)):
     response = {
         "doc_id": doc_id,
         "indexed_chunks": index_info.get("num_chunks", 0),
-        "findings": detection.findings,
+        # Values are masked (e.g. ***-**-6789); full values never leave the server
+        "findings": [mask_finding(f) for f in detection.findings],
         "ungrounded_dropped": detection.ungrounded_dropped,
         "warning": detection.warning,
     }
@@ -136,8 +138,9 @@ async def ask_question(
 
     retrieved_ids = [chunk["id"] for chunk in chunks]
 
-    context = "\n---\n".join(chunk["text"] for chunk in chunks)
     findings = load_findings(doc_id)
+    # The LLM only sees masked values, and its answer is masked again below
+    context = "\n---\n".join(mask_text(chunk["text"], findings) for chunk in chunks)
 
     prompt = f"""
 You are an assistant helping users analyze sensitive HR/Finance text.
@@ -166,6 +169,7 @@ Important:
   based on the excerpts alone. Use the whole-document scan results above for that.
 - If the scan results list items that are not in the excerpts, say they exist elsewhere
   in the document.
+- Sensitive values are masked with "*". Keep them masked; never guess hidden digits.
 """
 
     # Call GROQ LLM
@@ -187,7 +191,7 @@ Important:
 
     # Groq SDK: message.content, not ["content"]
     choice = completion.choices[0]
-    answer = (choice.message.content or "").strip()
+    answer = mask_text((choice.message.content or "").strip(), findings)
     if not answer:
         return JSONResponse(status_code=502, content={
             "detail": f"The LLM (model '{rag.LLM_MODEL}') returned an empty answer.",
