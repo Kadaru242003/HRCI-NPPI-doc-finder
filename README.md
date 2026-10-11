@@ -72,6 +72,8 @@ flowchart TD
   - The prompt lists the eight categories and asks for a JSON array only, or `[]`.
   - The parser accepts fences, prose and `<think>` blocks around the array.
   - Categories are mapped onto the canonical eight. Each finding has `"source": "llm"`.
+- **Category check**: an LLM finding that fits none of the eight categories (for example `"other"`, or a bare
+  person's name) is dropped and counted in `uncategorized_dropped`.
 - **Grounding**: an LLM finding is kept only if its `text_snippet` appears in the text it was given after
   collapsing whitespace. Dropped findings are counted in `ungrounded_dropped`.
 - **Merge**: findings are de-duplicated by value. NPPI values compare by digits, so `SSN: 123-45-6789` and
@@ -88,7 +90,8 @@ flowchart TD
 
 - **`/upload` responses** contain only masked snippets:
   - NPPI keeps the last 4 digits: `***-**-6789`, `**** **** **** 1111`, `******9381`.
-  - HRCI snippets have every digit masked: `Salary: $***,***`. Words stay readable.
+  - HRCI snippets have every digit masked (`Salary: $***,***`) and person names reduced to initials
+    (`Jordan Smith` becomes `J. S.`). Other words stay readable.
 - **`/ask`**:
   - The excerpts are masked before they reach the LLM.
   - The answer is masked again. This pass matches the stored values in any spacing, dash or comma format, plus
@@ -222,6 +225,7 @@ runs, while rule confidences are fixed in `detectors.py`.
     { "type": "HRCI", "text_snippet": "placed on a performance improvement plan", "category": "performance", "confidence": 0.9, "source": "llm" }
   ],
   "ungrounded_dropped": 0,
+  "uncategorized_dropped": 0,
   "scan": { "total_batches": 1, "scanned_batches": 1, "failed_batches": 0, "retries": 0 },
   "warning": null
 }
@@ -390,7 +394,9 @@ These describe what the code does today.
 - **Document text is sent to a third-party API.** Detection sends each batch of raw text to Groq; only `/ask`
   excerpts are masked first. Use synthetic or approved data only.
 - **Masking only covers what was detected.** A value neither the rules nor the LLM found isn't masked in `/ask`
-  answers. HRCI snippets keep their words (for example "performance improvement plan"); only digits are masked.
+  answers. HRCI snippets keep their words (for example "performance improvement plan"); only digits and names are
+  masked. Names are found by a heuristic (2 or 3 capitalized words that aren't common HR terms), so a lone first
+  name, an all-caps name or a lowercase name isn't masked.
 - **Data at rest isn't encrypted.** Chunks, the raw findings record (`./db`) and the uploaded file (`./data/`)
   stay on disk until deleted or expired. Documents indexed before this version have no `created_at`, so they
   don't expire automatically and must be deleted with `DELETE /documents/{doc_id}`.
