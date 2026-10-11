@@ -97,21 +97,20 @@ def test_some_batches_failing_returns_findings_and_a_warning(client, fake_llm):
         state["n"] += 1
         if state["n"] == 2:
             raise groq_model_not_found()
-        return json.dumps(
-            [{"type": "NPPI", "text_snippet": f"batch {state['n']}", "category": "x", "confidence": 0.9}]
-        )
+        first_word = messages[-1]["content"].split("Text to label:\n---\n", 1)[1].split()[0]
+        return json.dumps([{"type": "HRCI", "text_snippet": first_word, "category": "x", "confidence": 0.9}])
 
     fake_llm.reply = second_batch_fails
     fake_llm.error = None
 
-    res = upload(client, "long.txt", "filler text " * 1000)
+    # Distinct words, so each batch's (grounded) finding is different
+    res = upload(client, "long.txt", " ".join(f"word{i:05d}" for i in range(1200)))
 
     assert res.status_code == 200
     body = res.json()
     total = len(fake_llm.calls)
     assert total >= 3
-    snippets = [f["text_snippet"] for f in body["findings"]]
-    assert "batch 1" in snippets and "batch 3" in snippets and "batch 2" not in snippets
+    assert len(body["findings"]) == total - 1  # one finding per batch that worked
     assert body["warning"].startswith(f"LLM detection failed for 1 of {total} parts of the file")
     assert "batch 2/" in body["warning"] and "HTTP 404" in body["warning"]
 

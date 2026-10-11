@@ -340,6 +340,7 @@ class DetectionResult:
     findings: list
     total_batches: int
     errors: list = field(default_factory=list)  # one entry per failed LLM batch
+    ungrounded_dropped: int = 0  # LLM findings whose snippet is not in the source text
 
     @property
     def warning(self):
@@ -426,22 +427,47 @@ def detect_hrci_nppi(doc_id: str):
     return result
 
 
-def scan_batches(batches: list, use_llm: bool = True, use_rules: bool = True) -> DetectionResult:
+def _collapse_ws(text: str) -> str:
+    return " ".join(text.split())
+
+
+def is_grounded(finding, source_text: str) -> bool:
+    """True if the finding's snippet appears in the source text (whitespace-normalized)."""
+    if not isinstance(finding, dict) or not isinstance(finding.get("text_snippet"), str):
+        return False
+    snippet = _collapse_ws(finding["text_snippet"])
+    return bool(snippet) and snippet in _collapse_ws(source_text)
+
+
+def scan_batches(batches: list, use_llm: bool = True, use_rules: bool = True, ground: bool = True) -> DetectionResult:
     """Hybrid detection over text batches: rules for structured NPPI, the LLM for the rest.
 
-    Pure function of the text (no storage), shared by the app and scripts/evaluate.py.
+    With `ground`, LLM findings whose snippet is not in the batch text they came
+    from are dropped and counted. Pure function of the text (no storage), shared
+    by the app and scripts/evaluate.py.
     """
-    per_batch, errors = [], []
+    per_batch, errors, dropped = [], [], 0
     for i, text in enumerate(batches):
         label = f"batch {i + 1}/{len(batches)}"
         if use_rules:
             per_batch.append(detectors.detect(text))
         if use_llm:
             try:
-                per_batch.append([_normalize_llm_finding(f) for f in _detect_batch(text, label)])
+                llm_findings = [_normalize_llm_finding(f) for f in _detect_batch(text, label)]
             except LLMError as e:
                 errors.append(str(e))
-    return DetectionResult(findings=merge_findings(per_batch), total_batches=len(batches) if use_llm else 0, errors=errors)
+                continue
+            if ground:
+                kept = [f for f in llm_findings if is_grounded(f, text)]
+                dropped += len(llm_findings) - len(kept)
+                llm_findings = kept
+            per_batch.append(llm_findings)
+    return DetectionResult(
+        findings=merge_findings(per_batch),
+        total_batches=len(batches) if use_llm else 0,
+        errors=errors,
+        ungrounded_dropped=dropped,
+    )
 
 
 # --------------------------------------------------------
