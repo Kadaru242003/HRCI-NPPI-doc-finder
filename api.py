@@ -153,6 +153,7 @@ async def upload_file(file: UploadFile = File(...)):
         # Values are masked (e.g. ***-**-6789); full values never leave the server
         "findings": [mask_finding(f) for f in detection.findings],
         "ungrounded_dropped": detection.ungrounded_dropped,
+        "scan": detection.scan,
         "warning": detection.warning,
     }
 

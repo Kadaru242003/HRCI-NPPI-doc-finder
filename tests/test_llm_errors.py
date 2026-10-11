@@ -86,8 +86,9 @@ def test_every_batch_failing_on_a_long_file_is_a_502(client, fake_llm):
     res = upload(client, "long.txt", "filler text " * 1000)
 
     assert res.status_code == 502
-    assert len(fake_llm.calls) > 1
-    assert f"({len(fake_llm.calls)} of {len(fake_llm.calls)})" in res.json()["detail"]
+    batches = len(fake_llm.calls) // (rag.LLM_MAX_RETRIES + 1)  # each batch was retried
+    assert batches > 1 and len(fake_llm.calls) == batches * (rag.LLM_MAX_RETRIES + 1)
+    assert f"({batches} of {batches})" in res.json()["detail"]
 
 
 def test_some_batches_failing_returns_findings_and_a_warning(client, fake_llm):
@@ -111,7 +112,9 @@ def test_some_batches_failing_returns_findings_and_a_warning(client, fake_llm):
     total = len(fake_llm.calls)
     assert total >= 3
     assert len(body["findings"]) == total - 1  # one finding per batch that worked
-    assert body["warning"].startswith(f"LLM detection failed for 1 of {total} parts of the file")
+    # 404 model_not_found is permanent: not retried, so each batch made exactly one call
+    assert body["scan"] == {"total_batches": total, "scanned_batches": total - 1, "failed_batches": 1, "retries": 0}
+    assert body["warning"].startswith(f"Partial scan: the LLM scanned {total - 1} of {total} parts of the file.")
     assert "batch 2/" in body["warning"] and "HTTP 404" in body["warning"]
 
 

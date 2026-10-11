@@ -141,6 +141,7 @@
     const STATUS_CLASSES = {
       info: "mt-3 text-sm text-slate-600",
       error: "mt-3 text-sm rounded-lg border border-red-300 bg-red-50 text-red-800 px-3 py-2",
+      partial: "mt-3 text-sm font-semibold rounded-lg border border-amber-400 bg-amber-100 text-amber-900 px-3 py-2",
     };
 
     function setUploadStatus(text, kind = "info") {
@@ -250,7 +251,16 @@
       deleteButton.disabled = false;
       deleteStatus.textContent = "";
 
-      setUploadStatus(`Upload complete. Detected ${lastFindings.length} sensitive items.`);
+      const scan = data.scan || {};
+      let status = `Upload complete. Detected ${lastFindings.length} sensitive items.`;
+      if (scan.failed_batches > 0) {
+        status = `PARTIAL SCAN: the LLM scanned only ${scan.scanned_batches} of ${scan.total_batches} parts of this file. ` +
+          `Detected ${lastFindings.length} sensitive items in what was scanned.`;
+      }
+      if (data.ungrounded_dropped > 0) {
+        status += ` ${data.ungrounded_dropped} LLM finding(s) were dropped because they did not quote the file.`;
+      }
+      setUploadStatus(status, scan.failed_batches > 0 ? "partial" : "info");
       showWarning(uploadWarning, data.warning);
 
       renderFindings(lastFindings);

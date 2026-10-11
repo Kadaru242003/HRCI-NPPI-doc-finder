@@ -46,7 +46,7 @@ def test_is_grounded_normalizes_whitespace_only():
 
 def test_grounding_can_be_disabled_for_the_llm_only_baseline(monkeypatch):
     fake = [{"type": "HRCI", "text_snippet": "not in the text", "category": "salary", "confidence": 0.9}]
-    monkeypatch.setattr(rag, "_detect_batch", lambda text, label: fake)
+    monkeypatch.setattr(rag, "_detect_batch", lambda text, label, stats=None: fake)
 
     grounded = rag.scan_batches(["some text"], use_rules=False)
     raw = rag.scan_batches(["some text"], use_rules=False, ground=False)
