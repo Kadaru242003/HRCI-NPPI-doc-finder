@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Markdown Sanitizer Check</title>
+  <script>
+    // Record any alert() a payload manages to trigger, instead of showing it.
+    window.__alerts = [];
+    window.alert = (msg) => window.__alerts.push(String(msg));
+  </script>
+  <script src="/static/vendor/marked-18.0.14.umd.js"
+    integrity="sha384-2vpGtuKqJvFlwJqYnf/wUMuzUfhUnYBt9oay0e2yaFcq0Dh6/aEbQ8YAOeKGzlYo"></script>
+  <script src="/static/vendor/purify-3.4.16.min.js"
+    integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL"></script>
+  <script src="/static/markdown.js"></script>
+  <link rel="stylesheet" href="/static/markdown.css" />
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 960px; padding: 16px; color: #0f172a; background: #fff; }
+    .case { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+    .case pre.src { background: #fef2f2; border: 1px solid #fecaca; padding: 6px 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-all; margin: 0 0 8px; font-size: 12px; }
+    .label { font-size: 12px; color: #475569; margin-bottom: 4px; }
+    #summary { font-weight: 600; padding: 10px 12px; border-radius: 8px; }
+    .pass { background: #ecfdf5; color: #065f46; }
+    .fail { background: #fef2f2; color: #991b1b; }
+    ul#checks { font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Markdown sanitizer check</h1>
+  <p>
+    Each case below is a hostile chat answer, as if the model had echoed it from an uploaded document.
+    It is rendered with the same <code>RiskBotMarkdown.render()</code> used by the chat panel.
+    Nothing should run, and raw HTML should appear as plain text.
+  </p>
+  <div id="summary">Running checks...</div>
+  <ul id="checks"></ul>
+  <div id="cases"></div>
+
+  <script>
+    const CASES = [
+      // Must be valid raw HTML to Markdown (an unquoted attribute value cannot contain quotes),
+      // otherwise the parser treats it as text and the HTML path is never tested.
+      ["Raw img with onerror", "Answer: <img src=x onerror=alert(1)>"],
+      ["Raw img with quoted onerror", "<img src=\"x\" onerror=\"alert('img-quoted')\">"],
+      ["Markdown javascript: link", "[click me](javascript:alert('md-js-link'))"],
+      ["Mixed case and entity encoded javascript: links",
+        "[a](JaVaScRiPt:alert('case')) and [b](&#106;avascript:alert('entity')) and [c](java\tscript:alert('tab'))"],
+      ["Autolink with javascript: scheme", "<javascript:alert('autolink')>"],
+      ["Raw anchor with javascript: href", "<a href=\"javascript:alert('raw-a')\">raw link</a>"],
+      ["Script block", "<script>alert('script')<\/script>"],
+      ["SVG onload", "<svg onload=alert('svg')></svg>"],
+      ["Iframe", "<iframe src=\"javascript:alert('iframe')\"></iframe>"],
+      ["Markdown image with attribute breakout", "![pic](x\" onerror=\"alert('md-img'))"],
+      ["data: URL link", "[data](data:text/html;base64,PHNjcmlwdD5hbGVydCgnZGF0YScpPC9zY3JpcHQ+)"],
+      ["Style and form injection", "<style>body{display:none}</style><form action=\"https://evil.example\"><input name=q></form>"],
+      ["Safe formatting still works",
+        "**Bold**, _italic_, `code` and a [normal link](https://example.com).\n\n- item one\n- item two\n\n| Type | Value |\n| --- | --- |\n| NPPI | 123-45-6789 |"],
+    ];
+
+    const casesEl = document.getElementById("cases");
+    const rendered = [];
+    for (const [label, src] of CASES) {
+      const box = document.createElement("div");
+      box.className = "case";
+      const title = document.createElement("div");
+      title.className = "label";
+      title.textContent = label;
+      const pre = document.createElement("pre");
+      pre.className = "src";
+      pre.textContent = src;
+      const out = document.createElement("div");
+      out.className = "markdown-body out";
+      out.replaceChildren(RiskBotMarkdown.render(src));
+      box.append(title, pre, out);
+      casesEl.append(box);
+      rendered.push(out);
+    }
+
+    function runChecks() {
+      const outputs = [...document.querySelectorAll(".out")];
+      const all = (sel) => outputs.flatMap((o) => [...o.querySelectorAll(sel)]);
+      const elements = all("*");
+      const links = all("a");
+      const checks = [
+        ["No alert() was triggered", window.__alerts.length === 0, window.__alerts.join(", ")],
+        ["No script, img, svg, iframe, style, form or input elements",
+          all("script, img, svg, iframe, style, form, input, object, embed").length === 0, ""],
+        ["No event handler attributes (on*)",
+          elements.every((el) => [...el.attributes].every((a) => !a.name.toLowerCase().startsWith("on"))), ""],
+        ["Every remaining href is http(s) or mailto",
+          links.every((a) => !a.hasAttribute("href") || /^(https?:|mailto:)/i.test(a.getAttribute("href"))),
+          links.map((a) => a.getAttribute("href")).join(" | ")],
+        ["Every link opens in a new tab with rel=\"noopener noreferrer\"",
+          links.every((a) => a.target === "_blank" && a.rel === "noopener noreferrer"), ""],
+        ["Raw HTML is shown as text",
+          rendered[0].textContent.includes("<img src=x onerror=alert(1)>")
+            && rendered[1].textContent.includes("<img src=\"x\" onerror=\"alert('img-quoted')\">"), ""],
+        ["Formatting renders (strong, em, code, list, table, link)",
+          ["strong", "em", "code", "ul li", "table td", "a[href='https://example.com']"]
+            .every((sel) => rendered[rendered.length - 1].querySelector(sel)), ""],
+      ];
+      const list = document.getElementById("checks");
+      list.replaceChildren(...checks.map(([name, ok, detail]) => {
+        const li = document.createElement("li");
+        li.textContent = `${ok ? "PASS" : "FAIL"}: ${name}${!ok && detail ? ` (${detail})` : ""}`;
+        return li;
+      }));
+      const passed = checks.every(([, ok]) => ok);
+      const summary = document.getElementById("summary");
+      summary.className = passed ? "pass" : "fail";
+      summary.textContent = passed ? `All ${checks.length} checks passed.` : "Some checks FAILED.";
+      window.__markdownTestResults = { passed, checks: checks.map(([name, ok, detail]) => ({ name, ok, detail })) };
+    }
+
+    // Give any injected onerror or onload handler time to fire before checking.
+    setTimeout(runChecks, 750);
+  </script>
+</body>
+</html>
