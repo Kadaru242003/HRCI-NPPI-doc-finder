@@ -1,10 +1,17 @@
+import json
+import logging
 import os
 import re
-import json
+import time
 from dataclasses import dataclass, field
 from groq import Groq
 
+import detectors
 import store
+from masking import mask_snippet
+
+# Logs carry counts and IDs only: never document text, model output or findings.
+log = logging.getLogger("riskbot")
 
 # --- CONFIG ---
 # Groq model used for both detection and /ask
@@ -14,12 +21,18 @@ LLM_MODEL = os.getenv("GROQ_MODEL", "").strip() or DEFAULT_LLM_MODEL
 DETECT_BATCH_CHARS = int(os.getenv("DETECT_BATCH_CHARS", "4000"))
 # Number of chunks /ask retrieves when the request doesn't say
 DEFAULT_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
+# Retries per detection batch (rate limits, server errors, unusable replies)
+LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))
+LLM_RETRY_BASE_SECONDS = 1.0  # exponential backoff: 1, 2, 4, ... seconds
+LLM_MAX_RETRY_WAIT = 30.0  # cap for a single wait, including Retry-After
+LLM_RETRY_SLEEP = time.sleep  # replaced in tests
 
 # --- GROQ CLIENT ---
 GROQ_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_KEY:
     raise Exception("Missing GROQ_API_KEY environment variable!")
-groq_client = Groq(api_key=GROQ_KEY)
+# Retries are done explicitly in _detect_batch (also for unusable replies), not by the SDK
+groq_client = Groq(api_key=GROQ_KEY, max_retries=0)
 
 
 def _chunk_filter(doc_id: str) -> dict:
@@ -66,6 +79,7 @@ def retrieve_chunks(doc_id: str, question: str, top_k: int = DEFAULT_TOP_K):
 # Load stored findings for a document
 # --------------------------------------------------------
 def load_findings(doc_id: str):
+    """The stored findings list, or None if no findings record exists."""
     results = store.collection.get(ids=[f"{doc_id}_findings"])
     for text in results["documents"]:
         try:
@@ -73,7 +87,131 @@ def load_findings(doc_id: str):
         except Exception:
             return []
 
-    return []
+    return None
+
+
+# --------------------------------------------------------
+# Findings summary for /ask, and a guard against answers that contradict it
+# --------------------------------------------------------
+def summarize_findings(findings, max_examples: int = 3) -> str:
+    """Compact, masked summary of a document's stored findings for the /ask prompt."""
+    if findings is None:
+        return "No whole-file scan result is stored for this document."
+    if not findings:
+        return "The whole-file scan found no sensitive data."
+
+    groups = {}
+    for item in findings:
+        if isinstance(item, dict):
+            key = (str(item.get("type", "?")).upper(), str(item.get("category", "other")).lower())
+        else:
+            key = ("?", "other")
+        groups.setdefault(key, []).append(item)
+
+    lines = [f"The whole-file scan found {len(findings)} sensitive item(s) (values masked):"]
+    for (ftype, category), items in sorted(groups.items()):
+        examples = []
+        for item in items[:max_examples]:
+            masked = mask_snippet(item)
+            examples.append(masked if len(masked) <= 60 else masked[:57] + "...")
+        more = f", +{len(items) - max_examples} more" if len(items) > max_examples else ""
+        lines.append(f"- {ftype} / {category}: {len(items)} ({'; '.join(examples)}{more})")
+    return "\n".join(lines)
+
+
+def load_scan_info(doc_id: str):
+    """{"total_batches", "failed_batches"} stored with the findings, or None."""
+    results = store.collection.get(ids=[f"{doc_id}_findings"], include=["metadatas"])
+    for meta in results["metadatas"]:
+        if meta:
+            return {"total_batches": meta.get("total_batches", 0), "failed_batches": meta.get("failed_batches", 0)}
+    return None
+
+
+# --------------------------------------------------------
+# Category questions ("show only NPPI", "list every SSN") are answered from the
+# stored whole-file findings, not from similarity search over a few chunks.
+# --------------------------------------------------------
+_LISTING_INTENT = re.compile(
+    r"\b(?:show|list|only|all|every|each|how\s+many|which|find|count|give\s+me)\b", re.IGNORECASE
+)
+# (pattern, types, categories, label); checked in order, every match is included
+_CATEGORY_TERMS = [
+    (r"\bhrci\b|\bhr\s+confidential", {"HRCI"}, None, "HRCI"),
+    (r"\bnppi\b|non-?public\s+personal", {"NPPI"}, None, "NPPI"),
+    (r"\bssns?\b|social\s+security", None, {"ssn"}, "SSNs"),
+    (r"\b(?:credit\s+|debit\s+|payment\s+)?cards?\b", None, {"credit_card"}, "card numbers"),
+    (r"\brouting\b|\baba\b", None, {"routing_number"}, "routing numbers"),
+    (r"\b(?:bank\s+)?accounts?\b", None, {"bank_account"}, "account numbers"),
+    (r"\bsalar(?:y|ies)\b|\bcompensation\b|\bbonus(?:es)?\b|\bpay\b|\bwages?\b", None, {"compensation"}, "compensation"),
+    (r"\bperformance\b|\bpips?\b|\bwarnings?\b", None, {"performance"}, "performance items"),
+    (r"\bterminations?\b|\bseverance\b|\bfired\b", None, {"termination"}, "terminations"),
+    (r"\bmedical\b|\bhealth\b|\bmedical\s+leave\b|\binjur(?:y|ies)\b|\bdisabilit(?:y|ies)\b", None, {"medical"}, "medical items"),
+]
+
+
+def route_question(question: str):
+    """A findings filter for listing questions about a type or category, else None.
+
+    Returns {"types": set, "categories": set, "label": str}. Questions without a
+    listing word ("what is Jane's salary?") or without a category go to retrieval.
+    """
+    q = question or ""
+    if not _LISTING_INTENT.search(q):
+        return None
+    types, categories, labels = set(), set(), []
+    for pattern, t, c, label in _CATEGORY_TERMS:
+        if re.search(pattern, q, re.IGNORECASE):
+            types |= t or set()
+            categories |= c or set()
+            labels.append(label)
+    if not labels:
+        return None
+    return {"types": types, "categories": categories, "label": " and ".join(labels)}
+
+
+def answer_from_findings(route: dict, findings, scan=None) -> str:
+    """Deterministic Markdown answer listing the matching stored findings (masked)."""
+    if findings is None:
+        return "No whole-file scan result is stored for this document."
+    matching = [
+        f for f in findings
+        if isinstance(f, dict)
+        and (str(f.get("type", "")).upper() in route["types"] or str(f.get("category", "")).lower() in route["categories"])
+    ]
+    if not matching:
+        answer = f"The whole-file scan found no {route['label']} in this document."
+    else:
+        lines = [
+            f"The whole-file scan found **{len(matching)}** {route['label']} item(s) (values masked):",
+            "",
+            "| Type | Category | Value | Source |",
+            "| --- | --- | --- | --- |",
+        ]
+        for f in matching:
+            value = mask_snippet(f).replace("|", "\\|").replace("\n", " ")
+            lines.append(f"| {f.get('type', '')} | {f.get('category', '')} | {value} | {f.get('source', '')} |")
+        answer = "\n".join(lines)
+    if scan and scan.get("failed_batches"):
+        answer += (
+            f"\n\nNote: only {scan['total_batches'] - scan['failed_batches']} of {scan['total_batches']} "
+            f"parts of this file were scanned by the LLM, so HRCI items may be missing."
+        )
+    return answer
+
+
+_NO_SENSITIVE_DATA = re.compile(
+    r"\b(?:no|not\s+(?:any|contain\s+any)|none\s+of\s+the)\s+(?:\w+\s+){0,3}?"
+    r"(?:sensitive|confidential|personal|hrci|nppi|pii)\b"
+    r"|\bdoes\s+not\s+(?:appear\s+to\s+)?contain\s+(?:any\s+)?(?:\w+\s+){0,2}?"
+    r"(?:sensitive|confidential|personal|hrci|nppi|pii)\b",
+    re.IGNORECASE,
+)
+
+
+def contradicts_findings(answer: str, findings) -> bool:
+    """True if the answer claims there is no sensitive data while findings exist."""
+    return bool(findings) and bool(_NO_SENSITIVE_DATA.search(answer or ""))
 
 
 # --------------------------------------------------------
@@ -93,17 +231,19 @@ def build_user_prompt(context: str) -> str:
     return f"""
 Tag any spans in the text that match these categories.
 
-HRCI (Human Resource Confidential Information) examples:
-- salaries, bonuses, compensation
-- performance reviews, warnings, PIP
-- termination / severance
-- health or medical claims related to employment
+HRCI (Human Resource Confidential Information), categories:
+- compensation: salaries, bonuses, offer amounts
+- performance: performance reviews, warnings, PIPs
+- termination: terminations, severance
+- medical: medical leave, injuries, health or disability information related to employment
 
-NPPI (Non-Public Personal Information) examples:
-- SSN-like patterns (e.g., 123-45-6789)
-- bank or routing numbers
-- account / loan numbers
-- credit card numbers
+NPPI (Non-Public Personal Information), categories:
+- ssn: Social Security numbers (e.g., 123-45-6789)
+- credit_card: payment card numbers
+- routing_number: bank routing (ABA) numbers
+- bank_account: bank account or loan numbers
+
+Use "other" for anything sensitive that fits none of these.
 
 Return ONLY a JSON array. No explanation. If nothing matches, return [].
 
@@ -111,7 +251,7 @@ Each JSON object must be:
 {{
   "type": "HRCI" or "NPPI",
   "text_snippet": "<exact substring>",
-  "category": "<one word category>",
+  "category": "<one of the categories above>",
   "confidence": <float between 0.0 and 1.0>
 }}
 
@@ -212,18 +352,60 @@ def batch_chunks(chunks: list[str], max_chars: int = DETECT_BATCH_CHARS) -> list
     return batches
 
 
+# Canonical categories (see eval/README.md); LLM categories are mapped onto them by keyword.
+CATEGORY_KEYWORDS = [
+    ("ssn", ("ssn", "social")),
+    ("credit_card", ("card", "credit")),
+    ("routing_number", ("routing", "aba")),
+    ("bank_account", ("account", "bank", "iban")),
+    ("compensation", ("salary", "bonus", "compensation", "pay", "wage")),
+    ("performance", ("performance", "pip", "warning", "review")),
+    ("termination", ("termination", "severance", "dismiss", "fired")),
+    ("medical", ("medical", "health", "leave", "injury", "disability", "workers")),
+]
+
+
+def canonical_category(raw):
+    """One of the canonical categories, or None if the label matches none of them."""
+    text = str(raw or "").lower()
+    for category, keywords in CATEGORY_KEYWORDS:
+        if any(k in text for k in keywords):
+            return category
+    return None
+
+
 def _finding_key(item):
     if isinstance(item, dict) and isinstance(item.get("text_snippet"), str):
+        ftype = str(item.get("type", "")).upper()
+        digits = re.sub(r"\D", "", item["text_snippet"])
+        if ftype == "NPPI" and len(digits) >= 4:
+            # "SSN: 123-45-6789" and "123 45 6789" are the same value
+            return ("nppi-digits", digits)
         snippet = " ".join(item["text_snippet"].split()).casefold()
-        return ("span", str(item.get("type", "")).upper(), snippet)
+        return ("span", ftype, snippet)
     return ("raw", json.dumps(item, sort_keys=True, default=str))
 
 
-def merge_findings(batches_of_findings) -> list:
-    """Merge per-batch findings, keeping one entry per (type, snippet).
+def _wins_over(new, old) -> bool:
+    """A rule finding beats an LLM finding; otherwise the higher confidence wins."""
+    new_rule = isinstance(new, dict) and new.get("source") == "rule"
+    old_rule = isinstance(old, dict) and old.get("source") == "rule"
+    if new_rule != old_rule:
+        return new_rule
+    old_conf = old.get("confidence") if isinstance(old, dict) else None
+    new_conf = new.get("confidence") if isinstance(new, dict) else None
+    return isinstance(new_conf, (int, float)) and (
+        not isinstance(old_conf, (int, float)) or new_conf > old_conf
+    )
 
-    Chunks overlap, so the same span is often reported more than once; the
-    entry with the highest confidence wins and first-seen order is kept.
+
+def merge_findings(batches_of_findings) -> list:
+    """Merge findings, keeping one entry per value.
+
+    Chunks overlap and rules and the LLM can report the same value, so
+    duplicates are common. A rule finding wins over an LLM finding; between
+    findings of the same source the highest confidence wins. First-seen
+    order is kept.
     """
     merged = {}
     for findings in batches_of_findings:
@@ -231,60 +413,113 @@ def merge_findings(batches_of_findings) -> list:
             key = _finding_key(item)
             if key not in merged:
                 merged[key] = item
-                continue
-            old_conf = merged[key].get("confidence") if isinstance(merged[key], dict) else None
-            new_conf = item.get("confidence") if isinstance(item, dict) else None
-            if isinstance(new_conf, (int, float)) and (
-                not isinstance(old_conf, (int, float)) or new_conf > old_conf
-            ):
+            elif _wins_over(item, merged[key]):
                 merged[key] = item
     return list(merged.values())
+
+
+def _normalize_llm_finding(item):
+    if not isinstance(item, dict):
+        return item
+    item = dict(item, source="llm")
+    raw = item.get("category")
+    item["category"] = canonical_category(raw) or str(raw or "other").strip().lower() or "other"
+    return item
 
 
 @dataclass
 class DetectionResult:
     findings: list
     total_batches: int
-    errors: list = field(default_factory=list)  # one entry per failed batch
+    errors: list = field(default_factory=list)  # one entry per failed LLM batch
+    ungrounded_dropped: int = 0  # LLM findings whose snippet is not in the source text
+    retries: int = 0  # LLM retries across all batches
+
+    @property
+    def scan(self) -> dict:
+        return {
+            "total_batches": self.total_batches,
+            "scanned_batches": self.total_batches - len(self.errors),
+            "failed_batches": len(self.errors),
+            "retries": self.retries,
+        }
 
     @property
     def warning(self):
         if not self.errors:
             return None
         return (
-            f"LLM detection failed for {len(self.errors)} of {self.total_batches} parts "
-            f"of the file, so those parts were not scanned and findings from them are "
-            f"missing. {self.errors[0]}"
+            f"Partial scan: the LLM scanned {self.total_batches - len(self.errors)} of "
+            f"{self.total_batches} parts of the file. {len(self.errors)} part(s) failed after "
+            f"{LLM_MAX_RETRIES} retries, so HRCI findings from them are missing (the rule-based "
+            f"NPPI checks still covered the whole file). {self.errors[0]}"
         )
 
 
-def _detect_batch(text: str, label: str) -> list:
-    """Return the findings for one batch; raise LLMError if there is no usable result."""
+def _retry_wait(error, attempt: int):
+    """Seconds to wait before retrying after `error`, or None if it is not worth retrying."""
+    status = getattr(error, "status_code", None)
+    if isinstance(error, LLMError):  # empty or unparseable reply
+        retryable = True
+    elif status is not None:
+        retryable = status == 429 or status >= 500
+    else:  # connection errors and timeouts have no status code
+        retryable = type(error).__name__ in ("APIConnectionError", "APITimeoutError")
+    if not retryable:
+        return None
+    headers = getattr(getattr(error, "response", None), "headers", None) or {}
     try:
-        completion = groq_client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[
-                {"role": "system", "content": build_system_prompt()},
-                {"role": "user", "content": build_user_prompt(text)},
-            ],
-            temperature=0.2,
-        )
-    except Exception as e:
-        print(f"Groq error in detect_hrci_nppi ({label}):", e)
-        raise LLMError(f"Model '{LLM_MODEL}', {label}: {describe_llm_error(e)}") from e
+        retry_after = float(headers.get("retry-after"))
+    except (TypeError, ValueError):
+        retry_after = None
+    wait = retry_after if retry_after is not None else LLM_RETRY_BASE_SECONDS * 2 ** attempt
+    return min(max(wait, 0.0), LLM_MAX_RETRY_WAIT)
 
+
+def _call_llm_once(text: str, label: str) -> list:
+    """One LLM call for one batch; raises the SDK error, or LLMError for an unusable reply."""
+    completion = groq_client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[
+            {"role": "system", "content": build_system_prompt()},
+            {"role": "user", "content": build_user_prompt(text)},
+        ],
+        temperature=0.2,
+    )
     # Groq SDK: message.content is an attribute, not a dict (and may be None)
     raw = (completion.choices[0].message.content or "").strip()
-
-    print(f"\n=== RAW MODEL OUTPUT (detect_hrci_nppi, {label}) ===\n")
-    print(raw)
-    print("\n===========================================\n")
-
     findings = extract_json_array(raw)
     if findings is None:
         reason = "empty reply" if not raw else "reply contained no JSON array"
+        log.warning("LLM reply unusable (%s): %s, %d chars", label, reason, len(raw))
         raise LLMError(f"Model '{LLM_MODEL}', {label}: {reason}")
     return findings
+
+
+def _detect_batch(text: str, label: str, stats: dict = None) -> list:
+    """Findings for one batch, retrying transient failures with exponential backoff.
+
+    Rate limits (429, honoring Retry-After), server errors, connection errors and
+    unusable replies are retried up to LLM_MAX_RETRIES times. Permanent errors
+    (e.g. 404 model_not_found, 401) fail at once. Raises LLMError when no usable
+    result was obtained.
+    """
+    for attempt in range(LLM_MAX_RETRIES + 1):
+        try:
+            findings = _call_llm_once(text, label)
+            log.info("LLM batch done (%s): %d finding(s), %d retr%s", label, len(findings), attempt, "y" if attempt == 1 else "ies")
+            return findings
+        except Exception as e:
+            wait = _retry_wait(e, attempt) if attempt < LLM_MAX_RETRIES else None
+            if wait is None:
+                log.warning("LLM call failed (%s) after %d attempt(s): %s", label, attempt + 1, type(e).__name__)
+                if isinstance(e, LLMError):
+                    raise
+                raise LLMError(f"Model '{LLM_MODEL}', {label}: {describe_llm_error(e)}") from e
+            log.info("LLM call failed (%s): %s, retrying in %.1fs", label, type(e).__name__, wait)
+            if stats is not None:
+                stats["retries"] = stats.get("retries", 0) + 1
+            LLM_RETRY_SLEEP(wait)
 
 
 # --------------------------------------------------------
@@ -303,24 +538,18 @@ def detect_hrci_nppi(doc_id: str):
     chunks = load_chunks_for_doc(doc_id)
 
     if not chunks:
-        print(f"No text found for document {doc_id}.")
+        log.info("doc %s: no text to scan", doc_id)
         return DetectionResult(findings=[], total_batches=0)
 
-    batches = batch_chunks(chunks)
-    per_batch, errors = [], []
-    for i, text in enumerate(batches):
-        try:
-            per_batch.append(_detect_batch(text, f"batch {i + 1}/{len(batches)}"))
-        except LLMError as e:
-            errors.append(str(e))
-
-    if len(errors) == len(batches):
+    result = scan_batches(batch_chunks(chunks))
+    if result.total_batches and len(result.errors) == result.total_batches:
+        rule_count = sum(1 for f in result.findings if f.get("source") == "rule")
         raise LLMError(
-            f"LLM detection failed for every part of the file ({len(batches)} of "
-            f"{len(batches)}), so the file was NOT scanned. {errors[0]}"
+            f"LLM detection failed for every part of the file ({result.total_batches} of "
+            f"{result.total_batches}), so the file was NOT scanned for HRCI "
+            f"(rule-based checks found {rule_count} structured NPPI value(s)). {result.errors[0]}"
         )
-
-    findings = merge_findings(per_batch)
+    findings = result.findings
 
     # Store findings in Chroma (read back by load_findings)
     try:
@@ -329,45 +558,57 @@ def detect_hrci_nppi(doc_id: str):
         store.collection.add(
             ids=[f"{doc_id}_findings"],
             documents=[findings_text],
-            metadatas=[{"doc_id": doc_id, "kind": "findings"}],
+            metadatas=[{
+                "doc_id": doc_id, "kind": "findings", "created_at": time.time(),
+                "total_batches": result.total_batches, "failed_batches": len(result.errors),
+            }],
             embeddings=emb,
         )
     except Exception as e:
-        print("Failed to store findings in Chroma:", e)
+        log.error("doc %s: storing findings failed: %s", doc_id, type(e).__name__)
 
-    return DetectionResult(findings=findings, total_batches=len(batches), errors=errors)
+    return result
 
 
-# --------------------------------------------------------
-# OPTIONAL: direct detection from arbitrary text (not used by UI now)
-# --------------------------------------------------------
-def detect_from_text(text: str):
-    if not text or not text.strip():
-        return []
+def _collapse_ws(text: str) -> str:
+    return " ".join(text.split())
 
-    text = text.strip()[:4000]
 
-    system_prompt = build_system_prompt()
-    user_prompt = build_user_prompt(text)
+def is_grounded(finding, source_text: str) -> bool:
+    """True if the finding's snippet appears in the source text (whitespace-normalized)."""
+    if not isinstance(finding, dict) or not isinstance(finding.get("text_snippet"), str):
+        return False
+    snippet = _collapse_ws(finding["text_snippet"])
+    return bool(snippet) and snippet in _collapse_ws(source_text)
 
-    try:
-        completion = groq_client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.2,
-        )
-    except Exception as e:
-        print("Groq error in detect_from_text:", e)
-        return []
 
-    raw = completion.choices[0].message.content.strip()
+def scan_batches(batches: list, use_llm: bool = True, use_rules: bool = True, ground: bool = True) -> DetectionResult:
+    """Hybrid detection over text batches: rules for structured NPPI, the LLM for the rest.
 
-    print("\n=== RAW MODEL OUTPUT (direct) ===\n")
-    print(raw)
-    print("\n=================================\n")
-
-    return _parse_json_from_text(raw)
-
+    With `ground`, LLM findings whose snippet is not in the batch text they came
+    from are dropped and counted. Pure function of the text (no storage), shared
+    by the app and scripts/evaluate.py.
+    """
+    per_batch, errors, dropped, stats = [], [], 0, {"retries": 0}
+    for i, text in enumerate(batches):
+        label = f"batch {i + 1}/{len(batches)}"
+        if use_rules:
+            per_batch.append(detectors.detect(text))
+        if use_llm:
+            try:
+                llm_findings = [_normalize_llm_finding(f) for f in _detect_batch(text, label, stats)]
+            except LLMError as e:
+                errors.append(str(e))
+                continue
+            if ground:
+                kept = [f for f in llm_findings if is_grounded(f, text)]
+                dropped += len(llm_findings) - len(kept)
+                llm_findings = kept
+            per_batch.append(llm_findings)
+    return DetectionResult(
+        findings=merge_findings(per_batch),
+        total_batches=len(batches) if use_llm else 0,
+        errors=errors,
+        ungrounded_dropped=dropped,
+        retries=stats["retries"],
+    )

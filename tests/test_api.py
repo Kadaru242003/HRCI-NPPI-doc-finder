@@ -1,4 +1,5 @@
 import io
+import zipfile
 import json
 import uuid
 
@@ -6,6 +7,7 @@ import pytest
 from openpyxl import Workbook
 
 import rag
+from masking import mask_finding
 
 TXT_DOC = (
     "Employee: Jane Doe\n"
@@ -17,6 +19,13 @@ TXT_DOC = (
 FINDINGS = [
     {"type": "HRCI", "text_snippet": "Salary: $102,000", "category": "salary", "confidence": 0.93},
     {"type": "NPPI", "text_snippet": "123-45-6789", "category": "ssn", "confidence": 0.99},
+]
+
+# What the hybrid pipeline returns for FINDINGS: the SSN comes from the rule detector
+# (rules run first and win over the LLM), the LLM's "salary" maps to "compensation".
+EXPECTED = [
+    {"type": "NPPI", "text_snippet": "123-45-6789", "category": "ssn", "confidence": 0.97, "source": "rule"},
+    {"type": "HRCI", "text_snippet": "Salary: $102,000", "category": "compensation", "confidence": 0.93, "source": "llm"},
 ]
 
 
@@ -49,7 +58,8 @@ def test_upload_txt_returns_parsed_findings(client, fake_llm, tmp_path):
     body = res.json()
     uuid.UUID(body["doc_id"])  # valid UUID
     assert body["indexed_chunks"] == 1
-    assert body["findings"] == FINDINGS
+    assert body["findings"] == [mask_finding(f) for f in EXPECTED]
+    assert body["findings"][0]["text_snippet"] == "***-**-6789"  # API responses are masked
     assert body["warning"] is None
 
     # One LLM call, with the document text in the prompt
@@ -76,7 +86,10 @@ def test_upload_xlsx_includes_every_sheet_and_header_row(client, fake_llm):
     assert res.status_code == 200
     body = res.json()
     assert body["indexed_chunks"] == 1
-    assert body["findings"] == FINDINGS
+    routing = {"type": "NPPI", "text_snippet": "021000021", "category": "routing_number", "confidence": 0.93, "source": "rule"}
+    # The LLM's "Salary: $102,000" is not in the sheet (the cell is 102000), so grounding drops it
+    assert body["findings"] == [mask_finding(EXPECTED[0]), mask_finding(routing)]
+    assert body["ungrounded_dropped"] == 1
 
     prompt = fake_llm.last_user_prompt()
     for cell in ["Name", "SSN", "Salary", "Jane Doe", "123-45-6789", "102000"]:
@@ -97,8 +110,20 @@ def test_upload_rejects_unsupported_extension(client, fake_llm):
     assert fake_llm.calls == []
 
 
-def test_upload_corrupt_xlsx_returns_400(client, fake_llm):
+def test_upload_non_spreadsheet_named_xlsx_returns_415(client, fake_llm):
     res = upload(client, "broken.xlsx", b"this is not a spreadsheet")
+
+    assert res.status_code == 415
+    assert "not a valid .xlsx" in res.json()["detail"]
+    assert fake_llm.calls == []
+
+
+def test_upload_unreadable_workbook_returns_400(client, fake_llm):
+    # Passes the content check (a ZIP with xl/workbook.xml) but is not a readable workbook
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("xl/workbook.xml", "<not really a workbook>")
+    res = upload(client, "broken.xlsx", buf.getvalue())
 
     assert res.status_code == 400
     assert "Unable to open Excel file" in res.json()["detail"]
@@ -160,19 +185,21 @@ def test_ask_answers_with_document_context(client, fake_llm):
     doc_id = upload(client, "employee.txt", TXT_DOC.encode(), "text/plain").json()["doc_id"]
     fake_llm.reply = "- **Salary: $102,000** (HRCI)"
 
-    res = client.post("/ask", data={"doc_id": doc_id, "question": "show only HRCI"})
+    # A free-form question goes to retrieval + LLM ("show only HRCI" is answered from findings)
+    res = client.post("/ask", data={"doc_id": doc_id, "question": "what does the file say about Jane Doe?"})
 
     assert res.status_code == 200
     assert res.json() == {
         "answer": "- **Salary: $102,000** (HRCI)",
         "retrieved_chunk_ids": [f"{doc_id}_0"],
         "warning": None,
+        "route": "retrieval",
     }
 
     call = fake_llm.calls[-1]
     assert call["model"] == "openai/gpt-oss-120b"
     prompt = fake_llm.last_user_prompt()
-    assert "show only HRCI" in prompt
+    assert "what does the file say about Jane Doe?" in prompt
     assert "Salary: $102,000" in prompt
 
 
@@ -191,7 +218,7 @@ def test_ask_unknown_document_does_not_call_llm(client, fake_llm):
     res = client.post("/ask", data={"doc_id": "does-not-exist", "question": "summarize"})
 
     assert res.status_code == 200
-    assert res.json() == {"answer": "No document found.", "retrieved_chunk_ids": [], "warning": None}
+    assert res.json() == {"answer": "No document found.", "retrieved_chunk_ids": [], "warning": None, "route": "retrieval"}
     assert fake_llm.calls == []
 
 
@@ -220,5 +247,5 @@ def test_findings_are_not_fed_back_into_chat_context(client, fake_llm):
     fake_llm.reply = json.dumps(FINDINGS)
     doc_id = upload(client, "employee.txt", TXT_DOC.encode(), "text/plain").json()["doc_id"]
 
-    assert rag.load_findings(doc_id) == FINDINGS
+    assert rag.load_findings(doc_id) == EXPECTED
     assert all('"text_snippet"' not in chunk for chunk in rag.load_chunks_for_doc(doc_id))
