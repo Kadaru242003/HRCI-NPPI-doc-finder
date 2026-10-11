@@ -151,7 +151,7 @@ def test_ask_rejects_invalid_top_k(client, fake_llm, top_k):
 
 def test_data_survives_a_client_restart(client, fake_llm, chroma_dir):
     fake_llm.reply = json.dumps(
-        [{"type": "HRCI", "text_snippet": "Salary: $102,000", "category": "salary", "confidence": 0.9}]
+        [{"type": "HRCI", "text_snippet": "salary: $102,000", "category": "salary", "confidence": 0.9}]
     )
     doc_id = upload(client, "employee.txt", "Employee salary: $102,000 and bonus")["doc_id"]
     old_client = store.client
@@ -162,7 +162,7 @@ def test_data_survives_a_client_restart(client, fake_llm, chroma_dir):
 
     assert store.client is not old_client
     assert rag.load_chunks_for_doc(doc_id) == ["Employee salary: $102,000 and bonus"]
-    assert rag.load_findings(doc_id)[0]["text_snippet"] == "Salary: $102,000"
+    assert rag.load_findings(doc_id)[0]["text_snippet"] == "salary: $102,000"
 
     fake_llm.reply = "Answer"
     res = client.post("/ask", data={"doc_id": doc_id, "question": "salary"})
@@ -206,7 +206,8 @@ def test_text_after_4000_chars_is_detected(client, fake_llm):
     body = upload(client, "long.txt", text)
 
     assert body["indexed_chunks"] > 4
-    assert {"type": "NPPI", "text_snippet": "987-65-4321", "category": "ssn", "confidence": 0.9} in body[
+    # Area 987 is not a valid SSN area, so only the (fake) LLM reports it: proof it saw the end of the file
+    assert {"type": "NPPI", "text_snippet": "***-**-4321", "category": "ssn", "confidence": 0.9, "source": "llm"} in body[
         "findings"
     ]
     assert len(fake_llm.calls) > 1
@@ -235,25 +236,23 @@ def test_span_in_chunk_overlap_is_reported_once(client, fake_llm):
 
     labelled = [text_to_label(c["messages"]) for c in fake_llm.calls]
     assert sum("123-45-6789" in t for t in labelled) == 2
-    assert [f["text_snippet"] for f in body["findings"]] == ["123-45-6789"]
+    assert [f["text_snippet"] for f in body["findings"]] == ["***-**-6789"]
 
 
 def test_one_failed_batch_does_not_drop_other_findings(client, fake_llm):
-    calls = {"n": 0}
-
-    def flaky(messages):
-        calls["n"] += 1
-        if calls["n"] == 1:
+    def first_batch_always_unusable(messages):
+        if "111-22-3333" not in text_to_label(messages):
             return "not json at all"
         return ssn_detector(messages)
 
-    fake_llm.reply = flaky
+    fake_llm.reply = first_batch_always_unusable
     text = "x" * 6000 + " 111-22-3333 "
 
     body = upload(client, "flaky.txt", text)
 
-    assert [f["text_snippet"] for f in body["findings"]] == ["111-22-3333"]
-    assert body["warning"].startswith("LLM detection failed for 1 of 2 parts of the file")
+    assert [f["text_snippet"] for f in body["findings"]] == ["***-**-3333"]
+    assert body["scan"]["failed_batches"] == 1 and body["scan"]["scanned_batches"] == 1
+    assert body["warning"].startswith("Partial scan: the LLM scanned 1 of 2 parts of the file.")
 
 
 # ---------------------------------------------------------------- helpers

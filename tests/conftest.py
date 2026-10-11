@@ -99,6 +99,14 @@ def fake_embedder(monkeypatch):
     return embedder
 
 
+@pytest.fixture(autouse=True)
+def retry_sleeps(monkeypatch):
+    """Retries in tests do not wait; the waits they would have made are recorded."""
+    sleeps = []
+    monkeypatch.setattr(rag, "LLM_RETRY_SLEEP", sleeps.append)
+    return sleeps
+
+
 @pytest.fixture
 def fake_llm(monkeypatch):
     llm = FakeLLM()
@@ -119,6 +127,12 @@ def chroma_dir(tmp_path):
 def client(monkeypatch, tmp_path, fake_llm, chroma_dir):
     from fastapi.testclient import TestClient
 
+    import limits
+
+    # Tests make many requests; rate-limit tests lower these themselves.
+    limits.rate_limiter.reset()
+    monkeypatch.setattr(limits, "UPLOADS_PER_MINUTE", 1000)
+    monkeypatch.setattr(limits, "ASKS_PER_MINUTE", 1000)
     monkeypatch.setattr(api, "UPLOAD_DIR", str(tmp_path))
     return TestClient(api.app)
 
@@ -138,3 +152,23 @@ def groq_model_not_found(model="llama-3.3-70b-versatile"):
     request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
     response = httpx.Response(404, request=request, json=body)
     return groq.NotFoundError(f"Error code: 404 - {body}", response=response, body=body)
+
+
+def groq_status_error(status: int, retry_after=None):
+    """A Groq SDK APIStatusError subclass for the given HTTP status (429, 500, 503, ...)."""
+    import groq
+    import httpx
+
+    headers = {"retry-after": str(retry_after)} if retry_after is not None else {}
+    body = {"error": {"message": f"synthetic HTTP {status}", "type": "test"}}
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    response = httpx.Response(status, request=request, headers=headers, json=body)
+    cls = {429: groq.RateLimitError, 500: groq.InternalServerError, 503: groq.InternalServerError}.get(status, groq.APIStatusError)
+    return cls(f"Error code: {status}", response=response, body=body)
+
+
+def groq_connection_error():
+    import groq
+    import httpx
+
+    return groq.APIConnectionError(request=httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions"))

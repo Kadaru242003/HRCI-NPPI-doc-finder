@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>RiskBot – HRCI/NPPI Detector</title>
+  <title>RiskBot: HRCI/NPPI Detector</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Markdown rendering for chat answers; vendored, see static/vendor/README.md -->
   <script src="/static/vendor/marked-18.0.14.umd.js"
@@ -15,7 +15,7 @@
 <body class="bg-slate-50">
   <div class="max-w-5xl mx-auto py-8 px-4 space-y-6">
     <h1 class="text-3xl font-semibold text-slate-900">
-      RiskBot – HRCI/NPPI Detector
+      RiskBot: HRCI/NPPI Detector
     </h1>
 
     <div class="grid gap-6 md:grid-cols-2">
@@ -81,9 +81,19 @@
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
       <h2 class="text-lg font-semibold text-slate-900 mb-2">Detected Sensitive Data</h2>
 
+      <div class="flex flex-wrap items-center gap-3 mb-3">
+        <p class="text-xs text-slate-500">
+          Document ID:
+          <span id="doc-id-display-bottom" class="font-mono text-[11px] text-slate-700">(none yet)</span>
+        </p>
+        <button type="button" id="delete-doc" disabled
+          class="inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50">
+          Delete document
+        </button>
+        <span id="delete-status" class="text-xs text-slate-600"></span>
+      </div>
       <p class="text-xs text-slate-500 mb-3">
-        Document ID:
-        <span id="doc-id-display-bottom" class="font-mono text-[11px] text-slate-700">(none yet)</span>
+        Documents and findings are deleted from the server automatically after a retention period (24 hours by default), or now with the button above.
       </p>
 
       <div class="overflow-x-auto">
@@ -92,13 +102,14 @@
             <tr class="bg-slate-100 text-slate-700">
               <th class="px-3 py-2 border-b border-slate-200">Type</th>
               <th class="px-3 py-2 border-b border-slate-200">Category</th>
-              <th class="px-3 py-2 border-b border-slate-200">Text Snippet</th>
+              <th class="px-3 py-2 border-b border-slate-200">Text Snippet (masked)</th>
               <th class="px-3 py-2 border-b border-slate-200">Confidence</th>
+              <th class="px-3 py-2 border-b border-slate-200">Source</th>
             </tr>
           </thead>
           <tbody id="findings-body">
             <tr>
-              <td colspan="4" class="px-3 py-2 text-slate-500">
+              <td colspan="5" class="px-3 py-2 text-slate-500">
                 No data yet. Upload a file to see detected HRCI/NPPI items.
               </td>
             </tr>
@@ -123,11 +134,14 @@
     const chatSubmit = document.getElementById("chat-submit");
     const chatAnswerContent = document.getElementById("chat-answer-content");
     const uploadWarning = document.getElementById("upload-warning");
+    const deleteButton = document.getElementById("delete-doc");
+    const deleteStatus = document.getElementById("delete-status");
     const chatWarning = document.getElementById("chat-warning");
 
     const STATUS_CLASSES = {
       info: "mt-3 text-sm text-slate-600",
       error: "mt-3 text-sm rounded-lg border border-red-300 bg-red-50 text-red-800 px-3 py-2",
+      partial: "mt-3 text-sm font-semibold rounded-lg border border-amber-400 bg-amber-100 text-amber-900 px-3 py-2",
     };
 
     function setUploadStatus(text, kind = "info") {
@@ -163,7 +177,7 @@
 
       if (!findings || findings.length === 0) {
         findingsBody.innerHTML =
-          '<tr><td colspan="4" class="px-3 py-2 text-slate-500">No sensitive data detected.</td></tr>';
+          '<tr><td colspan="5" class="px-3 py-2 text-slate-500">No sensitive data detected.</td></tr>';
         return;
       }
 
@@ -183,6 +197,7 @@
           <td class="px-3 py-2 align-top text-slate-600">
             ${(item.confidence * 100).toFixed(1)}%
           </td>
+          <td class="px-3 py-2 align-top text-slate-600">${escapeHtml(item.source ?? "")}</td>
         `;
         findingsBody.appendChild(tr);
       }
@@ -219,8 +234,9 @@
         docIdDisplay.textContent = "(none yet)";
         docIdDisplayBottom.textContent = "(none yet)";
         chatSubmit.disabled = true;
+        deleteButton.disabled = true;
         findingsBody.innerHTML =
-          '<tr><td colspan="4" class="px-3 py-2 text-red-700">The file was not scanned. See the error above.</td></tr>';
+          '<tr><td colspan="5" class="px-3 py-2 text-red-700">The file was not scanned. See the error above.</td></tr>';
         setUploadStatus(`Upload failed: ${errorText(data, res)}`, "error");
         return;
       }
@@ -232,11 +248,62 @@
       docIdDisplayBottom.textContent = currentDocId;
 
       chatSubmit.disabled = false;
+      deleteButton.disabled = false;
+      deleteStatus.textContent = "";
 
-      setUploadStatus(`Upload complete. Detected ${lastFindings.length} sensitive items.`);
+      const scan = data.scan || {};
+      let status = `Upload complete. Detected ${lastFindings.length} sensitive items.`;
+      if (scan.failed_batches > 0) {
+        status = `PARTIAL SCAN: the LLM scanned only ${scan.scanned_batches} of ${scan.total_batches} parts of this file. ` +
+          `Detected ${lastFindings.length} sensitive items in what was scanned.`;
+      }
+      if (data.ungrounded_dropped > 0) {
+        status += ` ${data.ungrounded_dropped} LLM finding(s) were dropped because they did not quote the file.`;
+      }
+      setUploadStatus(status, scan.failed_batches > 0 ? "partial" : "info");
       showWarning(uploadWarning, data.warning);
 
       renderFindings(lastFindings);
+    });
+
+    function clearDocument(tableMessage) {
+      currentDocId = null;
+      lastFindings = [];
+      docIdDisplay.textContent = "(none yet)";
+      docIdDisplayBottom.textContent = "(none yet)";
+      chatSubmit.disabled = true;
+      deleteButton.disabled = true;
+      chatAnswer.classList.add("hidden");
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 5;
+      cell.className = "px-3 py-2 text-slate-500";
+      cell.textContent = tableMessage;
+      row.append(cell);
+      findingsBody.replaceChildren(row);
+    }
+
+    deleteButton.addEventListener("click", async () => {
+      if (!currentDocId) return;
+      if (!confirm("Delete this document, its chunks and its findings from the server?")) return;
+      const docId = currentDocId;
+      deleteStatus.textContent = "Deleting...";
+      let res;
+      try {
+        res = await fetch(`/documents/${encodeURIComponent(docId)}`, { method: "DELETE" });
+      } catch (err) {
+        deleteStatus.textContent = `Delete failed: could not reach the server (${err.message}).`;
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 404) {
+        deleteStatus.textContent = `Delete failed: ${errorText(data, res)}`;
+        return;
+      }
+      clearDocument("Document deleted. Upload a file to scan another one.");
+      deleteStatus.textContent = res.status === 404 ? "Already deleted or expired." : "Deleted from the server.";
+      setUploadStatus("");
+      showWarning(uploadWarning, null);
     });
 
     chatForm.addEventListener("submit", async (e) => {
