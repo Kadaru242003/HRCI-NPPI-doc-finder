@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from groq import Groq
 
@@ -420,7 +421,7 @@ def detect_hrci_nppi(doc_id: str):
         store.collection.add(
             ids=[f"{doc_id}_findings"],
             documents=[findings_text],
-            metadatas=[{"doc_id": doc_id, "kind": "findings"}],
+            metadatas=[{"doc_id": doc_id, "kind": "findings", "created_at": time.time()}],
             embeddings=emb,
         )
     except Exception as e:
