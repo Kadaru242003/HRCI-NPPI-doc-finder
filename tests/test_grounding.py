@@ -23,10 +23,11 @@ def test_invented_snippets_are_dropped_and_counted(client, fake_llm):
     body = upload(client, TEXT)
 
     snippets = [f["text_snippet"] for f in body["findings"]]
-    assert "base salary increases to $98,500" in snippets  # line break in the source is fine
-    assert "salary of $250,000" not in snippets and "987-65-4321" not in snippets
+    # (API responses are masked: digits of HRCI amounts are hidden, NPPI keeps the last 4)
+    assert "base salary increases to $**,***" in snippets  # line break in the source is fine
+    assert "salary of $***,***" not in snippets and "***-**-4321" not in snippets
     assert body["ungrounded_dropped"] == 3
-    assert "123-45-6789" in snippets  # rule findings are exact matches, never dropped
+    assert "***-**-6789" in snippets  # rule findings are exact matches, never dropped
 
 
 def test_nothing_dropped_when_all_snippets_are_quotes(client, fake_llm):
