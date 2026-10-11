@@ -1,0 +1,1961 @@
+{
+ "seed": 20261011,
+ "documents": [
+  {
+   "file": "benchmark/dev/doc01.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "027-01-3772",
+     "span": "Employee SSN: 027-01-3772"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$64,000",
+     "span": "Morgan Castellano's base salary increases to $64,000 effective 2026-12-12."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "282324944",
+     "span": "Bank ABA 282324944, checking."
+    },
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "involuntary termination",
+     "span": "Exit interview notes: involuntary termination after the investigation."
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "6011 1111 1111 1117",
+     "span": "Payment card: 6011 1111 1111 1117"
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "disability accommodation",
+     "span": "Rowan Whitford requested a disability accommodation for a chronic condition."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc02.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "severance package",
+     "span": "HR approved a severance package of $39,000 for Skyler Whitford."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "678095243",
+     "span": "Direct deposit routing number: 678095243"
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "medical leave",
+     "span": "Reese Nakamura is on approved medical leave after knee surgery."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc03.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "involuntary termination",
+     "span": "Exit interview notes: involuntary termination after the investigation."
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "62290484669",
+     "span": "Deposit to acct #62290484669 at the credit union."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "workers' compensation claim",
+     "span": "A workers' compensation claim was filed for a back injury on the loading dock."
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "846-77-3706",
+     "span": "Please verify the SSN on file, 846-77-3706, before the W-2 run."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "659836285",
+     "span": "Use routing no. 659836285 for the payroll transfer."
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$64,500",
+     "span": "Quinn Vasquez's base salary increases to $64,500 effective 2026-10-02."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc04.xlsx",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "739-07-9191",
+     "span": "739-07-9191"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$112,000",
+     "span": "$112,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "042682907",
+     "span": "042682907"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "02502269848",
+     "span": "02502269848"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "501-05-9288",
+     "span": "501-05-9288"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$119,000",
+     "span": "$119,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "317881640",
+     "span": "317881640"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "015961252243",
+     "span": "015961252243"
+    },
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "severance package",
+     "span": "HR approved a severance package of $47,500 for Rowan Marchetti."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc05.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "workers' compensation claim",
+     "span": "A workers' compensation claim was filed for a back injury on the loading dock."
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "881-61-9735",
+     "span": "Employee SSN: 881-61-9735"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "695426468",
+     "span": "Bank ABA 695426468, checking."
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "performance improvement plan",
+     "span": "Parker Lindqvist was placed on a performance improvement plan for 60 days."
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$179,000",
+     "span": "Offer letter: starting salary $179,000 plus 10% target bonus."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc06.txt",
+   "split": "heldout",
+   "labels": []
+  },
+  {
+   "file": "benchmark/dev/doc07.xlsx",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "176-55-1962",
+     "span": "176-55-1962"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$172,500",
+     "span": "$172,500"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "121261223",
+     "span": "121261223"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "551186621",
+     "span": "551186621"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "153-92-4288",
+     "span": "153-92-4288"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$55,000",
+     "span": "$55,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "694490466",
+     "span": "694490466"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "61723004",
+     "span": "61723004"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "756-69-9468",
+     "span": "756-69-9468"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$161,000",
+     "span": "$161,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "085001626",
+     "span": "085001626"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "98716052678",
+     "span": "98716052678"
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "performance improvement plan",
+     "span": "Hayden Nakamura was placed on a performance improvement plan for 60 days."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc08.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "33195651",
+     "span": "Savings account 33195651 was closed last month."
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "856 44 8190",
+     "span": "Employee SSN: 856 44 8190"
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "rated 'does not meet expectations'",
+     "span": "In the annual review, Reese Okafor was rated 'does not meet expectations'."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "medical leave",
+     "span": "Jordan Castellano is on approved medical leave after knee surgery."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "060167721",
+     "span": "Bank ABA 060167721, checking."
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$126,500",
+     "span": "Offer letter: starting salary $126,500 plus 10% target bonus."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc09.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "4242 4242 4242 4242",
+     "span": "Payment card: 4242 4242 4242 4242"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$80,500",
+     "span": "Riley Marchetti's base salary increases to $80,500 effective 2026-12-17."
+    },
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "involuntary termination",
+     "span": "Exit interview notes: involuntary termination after the investigation."
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "59584849",
+     "span": "Savings account 59584849 was closed last month."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc10.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$84,000",
+     "span": "Offer letter: starting salary $84,000 plus 10% target bonus."
+    },
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "severance package",
+     "span": "HR approved a severance package of $57,000 for Hayden Abernathy."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "disability accommodation",
+     "span": "Quinn Okafor requested a disability accommodation for a chronic condition."
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "final written warning",
+     "span": "Rowan Delacroix received a final written warning for repeated absences."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc11.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "243-43-1357",
+     "span": "Employee SSN: 243-43-1357"
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "performance improvement plan",
+     "span": "Jordan Vasquez was placed on a performance improvement plan for 60 days."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "medical leave",
+     "span": "Parker Vasquez is on approved medical leave after knee surgery."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc12.xlsx",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "776-69-8399",
+     "span": "776-69-8399"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$121,500",
+     "span": "$121,500"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "091007452",
+     "span": "091007452"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "010839867351",
+     "span": "010839867351"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "655-02-3044",
+     "span": "655-02-3044"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$157,500",
+     "span": "$157,500"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "055891727",
+     "span": "055891727"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "26288145412",
+     "span": "26288145412"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "345-64-5724",
+     "span": "345-64-5724"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$144,000",
+     "span": "$144,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "251952224",
+     "span": "251952224"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "08819559",
+     "span": "08819559"
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "performance improvement plan",
+     "span": "Skyler Lindqvist was placed on a performance improvement plan for 60 days."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc13.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "disability accommodation",
+     "span": "Emerson Nakamura requested a disability accommodation for a chronic condition."
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "575 85 6415",
+     "span": "Morgan Whitford (social security number 575 85 6415) completed onboarding."
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "4111 1111 1111 1111",
+     "span": "Payment card: 4111 1111 1111 1111"
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "rated 'does not meet expectations'",
+     "span": "In the annual review, Skyler Ostrowski was rated 'does not meet expectations'."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "306466953",
+     "span": "Bank ABA 306466953, checking."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc14.txt",
+   "split": "heldout",
+   "labels": []
+  },
+  {
+   "file": "benchmark/dev/doc15.xlsx",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "466-03-0450",
+     "span": "466-03-0450"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$184,500",
+     "span": "$184,500"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "643344453",
+     "span": "643344453"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "508820716",
+     "span": "508820716"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "809-89-9767",
+     "span": "809-89-9767"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$83,000",
+     "span": "$83,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "102208399",
+     "span": "102208399"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "96813558736",
+     "span": "96813558736"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "318-45-2623",
+     "span": "318-45-2623"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$166,000",
+     "span": "$166,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "044553241",
+     "span": "044553241"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "683878920328",
+     "span": "683878920328"
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "disability accommodation",
+     "span": "Casey Castellano requested a disability accommodation for a chronic condition."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc16.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "90180247631",
+     "span": "Deposit to acct #90180247631 at the credit union."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "workers' compensation claim",
+     "span": "A workers' compensation claim was filed for a back injury on the loading dock."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "265858440",
+     "span": "Direct deposit routing number: 265858440"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$160,500",
+     "span": "Casey Vasquez's base salary increases to $160,500 effective 2026-11-06."
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "4242 4242 4242 4242",
+     "span": "Corporate card number 4242 4242 4242 4242 expires 09/28."
+    },
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "severance package",
+     "span": "HR approved a severance package of $18,000 for Riley Vasquez."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc17.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "employment will be terminated",
+     "span": "Hayden Ostrowski's employment will be terminated effective 2026-12-05."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "workers' compensation claim",
+     "span": "A workers' compensation claim was filed for a back injury on the loading dock."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "038651298",
+     "span": "Use routing no. 038651298 for the payroll transfer."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc18.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "0965119731",
+     "span": "Checking account number: 0965119731"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "268846666",
+     "span": "Use routing no. 268846666 for the payroll transfer."
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "310 39 8527",
+     "span": "Employee SSN: 310 39 8527"
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "4111 1111 1111 1111",
+     "span": "Corporate card number 4111 1111 1111 1111 expires 09/28."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc19.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "724750092",
+     "span": "Bank ABA 724750092, checking."
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "099-58-5964",
+     "span": "Please verify the SSN on file, 099-58-5964, before the W-2 run."
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "4111 1111 1111 1111",
+     "span": "Payment card: 4111 1111 1111 1111"
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "disability accommodation",
+     "span": "Morgan Lindqvist requested a disability accommodation for a chronic condition."
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$150,500",
+     "span": "Casey Nakamura's base salary increases to $150,500 effective 01/15/2026."
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "00170737859",
+     "span": "Deposit to acct #00170737859 at the credit union."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc20.xlsx",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "642-43-0846",
+     "span": "642-43-0846"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$120,500",
+     "span": "$120,500"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "681282166",
+     "span": "681282166"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "06587820505",
+     "span": "06587820505"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "071-73-3210",
+     "span": "071-73-3210"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$186,000",
+     "span": "$186,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "656227716",
+     "span": "656227716"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "784184053523",
+     "span": "784184053523"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "507-31-2915",
+     "span": "507-31-2915"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$125,000",
+     "span": "$125,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "627998841",
+     "span": "627998841"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "593836399944",
+     "span": "593836399944"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "392-56-6496",
+     "span": "392-56-6496"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$149,500",
+     "span": "$149,500"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "088024011",
+     "span": "088024011"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "08837674473",
+     "span": "08837674473"
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "workers' compensation claim",
+     "span": "A workers' compensation claim was filed for a back injury on the loading dock."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc21.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "disability accommodation",
+     "span": "Hayden Abernathy requested a disability accommodation for a chronic condition."
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$6,500",
+     "span": "Approved annual bonus of $6,500 for Avery Lindqvist."
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "4111 1111 1111 1111",
+     "span": "Corporate card number 4111 1111 1111 1111 expires 09/28."
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "final written warning",
+     "span": "Quinn Delacroix received a final written warning for repeated absences."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc22.txt",
+   "split": "heldout",
+   "labels": []
+  },
+  {
+   "file": "benchmark/dev/doc23.xlsx",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "257-63-6816",
+     "span": "257-63-6816"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$159,000",
+     "span": "$159,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "261243871",
+     "span": "261243871"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "30603929",
+     "span": "30603929"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "784-63-2191",
+     "span": "784-63-2191"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$175,500",
+     "span": "$175,500"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "713695045",
+     "span": "713695045"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "1222360422",
+     "span": "1222360422"
+    },
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "employment will be terminated",
+     "span": "Riley Okafor's employment will be terminated effective 07/05/2026."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc24.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "635734958",
+     "span": "Direct deposit routing number: 635734958"
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "medical leave",
+     "span": "Jordan Marchetti is on approved medical leave after knee surgery."
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "565 53 6220",
+     "span": "Skyler Castellano (social security number 565 53 6220) completed onboarding."
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "performance improvement plan",
+     "span": "Parker Nakamura was placed on a performance improvement plan for 60 days."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc25.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "severance package",
+     "span": "HR approved a severance package of $48,500 for Parker Whitford."
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$117,000",
+     "span": "Offer letter: starting salary $117,000 plus 10% target bonus."
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "3577771758",
+     "span": "Deposit to acct #3577771758 at the credit union."
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "414 65 0708",
+     "span": "Please verify the SSN on file, 414 65 0708, before the W-2 run."
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "3714 496353 98431",
+     "span": "Payment card: 3714 496353 98431"
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "performance improvement plan",
+     "span": "Parker Vasquez was placed on a performance improvement plan for 60 days."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc26.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "employment will be terminated",
+     "span": "Parker Abernathy's employment will be terminated effective 02/27/2026."
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$99,500",
+     "span": "Avery Delacroix's base salary increases to $99,500 effective 06/15/2026."
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "04377761",
+     "span": "Deposit to acct #04377761 at the credit union."
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "final written warning",
+     "span": "Avery Vasquez received a final written warning for repeated absences."
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "838-62-2620",
+     "span": "Employee SSN: 838-62-2620"
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc27.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$65,500",
+     "span": "Offer letter: starting salary $65,500 plus 10% target bonus."
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "final written warning",
+     "span": "Avery Ostrowski received a final written warning for repeated absences."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "workers' compensation claim",
+     "span": "A workers' compensation claim was filed for a back injury on the loading dock."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc28.xlsx",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "525-26-4553",
+     "span": "525-26-4553"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$143,000",
+     "span": "$143,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "223166064",
+     "span": "223166064"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "413580363",
+     "span": "413580363"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "584-43-2302",
+     "span": "584-43-2302"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$100,500",
+     "span": "$100,500"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "262611622",
+     "span": "262611622"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "180856102",
+     "span": "180856102"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "730-88-3166",
+     "span": "730-88-3166"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$70,000",
+     "span": "$70,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "258382415",
+     "span": "258382415"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "9435192721",
+     "span": "9435192721"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "180-62-0561",
+     "span": "180-62-0561"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$79,000",
+     "span": "$79,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "031479493",
+     "span": "031479493"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "578570687347",
+     "span": "578570687347"
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "rated 'does not meet expectations'",
+     "span": "In the annual review, Morgan Vasquez was rated 'does not meet expectations'."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc29.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "300095579",
+     "span": "Bank ABA 300095579, checking."
+    },
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "employment will be terminated",
+     "span": "Avery Abernathy's employment will be terminated effective 2026-04-02."
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "5555 5555 5555 4444",
+     "span": "Corporate card number 5555 5555 5555 4444 expires 09/28."
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "562 90 0447",
+     "span": "Please verify the SSN on file, 562 90 0447, before the W-2 run."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "medical leave",
+     "span": "Reese Lindqvist is on approved medical leave after knee surgery."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc30.txt",
+   "split": "heldout",
+   "labels": []
+  },
+  {
+   "file": "benchmark/dev/doc31.xlsx",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "596-47-5505",
+     "span": "596-47-5505"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$124,000",
+     "span": "$124,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "111751688",
+     "span": "111751688"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "791956535463",
+     "span": "791956535463"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "137-84-2134",
+     "span": "137-84-2134"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$87,500",
+     "span": "$87,500"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "122104729",
+     "span": "122104729"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "04599068",
+     "span": "04599068"
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "workers' compensation claim",
+     "span": "A workers' compensation claim was filed for a back injury on the loading dock."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc32.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "medical leave",
+     "span": "Emerson Vasquez is on approved medical leave after knee surgery."
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "96939236740",
+     "span": "Checking account number: 96939236740"
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "final written warning",
+     "span": "Emerson Castellano received a final written warning for repeated absences."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc33.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "261 73 1772",
+     "span": "Avery Delacroix (social security number 261 73 1772) completed onboarding."
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "performance improvement plan",
+     "span": "Reese Vasquez was placed on a performance improvement plan for 60 days."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "263669288",
+     "span": "Direct deposit routing number: 263669288"
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "4111 1111 1111 1111",
+     "span": "Payment card: 4111 1111 1111 1111"
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc34.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "768-85-5386",
+     "span": "Please verify the SSN on file, 768-85-5386, before the W-2 run."
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "performance improvement plan",
+     "span": "Avery Castellano was placed on a performance improvement plan for 60 days."
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "5105105105105100",
+     "span": "Corporate card number 5105105105105100 expires 09/28."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc35.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "663-71-3203",
+     "span": "Employee SSN: 663-71-3203"
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "5105105105105100",
+     "span": "Payment card: 5105105105105100"
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "workers' compensation claim",
+     "span": "A workers' compensation claim was filed for a back injury on the loading dock."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "257818919",
+     "span": "Bank ABA 257818919, checking."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc36.xlsx",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "471-08-0720",
+     "span": "471-08-0720"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$142,000",
+     "span": "$142,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "123442888",
+     "span": "123442888"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "668880387",
+     "span": "668880387"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "030-28-6672",
+     "span": "030-28-6672"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$154,000",
+     "span": "$154,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "032943562",
+     "span": "032943562"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "83479259104",
+     "span": "83479259104"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "774-84-8644",
+     "span": "774-84-8644"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$185,000",
+     "span": "$185,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "646535735",
+     "span": "646535735"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "407558079",
+     "span": "407558079"
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "final written warning",
+     "span": "Reese Nakamura received a final written warning for repeated absences."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc37.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "rated 'does not meet expectations'",
+     "span": "In the annual review, Quinn Lindqvist was rated 'does not meet expectations'."
+    },
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "severance package",
+     "span": "HR approved a severance package of $44,500 for Hayden Okafor."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "614934096",
+     "span": "Bank ABA 614934096, checking."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "workers' compensation claim",
+     "span": "A workers' compensation claim was filed for a back injury on the loading dock."
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "063 09 2211",
+     "span": "Please verify the SSN on file, 063 09 2211, before the W-2 run."
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$171,000",
+     "span": "Offer letter: starting salary $171,000 plus 10% target bonus."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc38.txt",
+   "split": "heldout",
+   "labels": []
+  },
+  {
+   "file": "benchmark/dev/doc39.xlsx",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "005-97-2651",
+     "span": "005-97-2651"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$148,500",
+     "span": "$148,500"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "716191313",
+     "span": "716191313"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "287538375731",
+     "span": "287538375731"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "181-96-9698",
+     "span": "181-96-9698"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$159,500",
+     "span": "$159,500"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "226474601",
+     "span": "226474601"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "0005036412",
+     "span": "0005036412"
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "rated 'does not meet expectations'",
+     "span": "In the annual review, Hayden Lindqvist was rated 'does not meet expectations'."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc40.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$11,500",
+     "span": "Approved annual bonus of $11,500 for Riley Okafor."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "disability accommodation",
+     "span": "Hayden Vasquez requested a disability accommodation for a chronic condition."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "073669355",
+     "span": "Use routing no. 073669355 for the payroll transfer."
+    },
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "involuntary termination",
+     "span": "Exit interview notes: involuntary termination after the investigation."
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "5555 5555 5555 4444",
+     "span": "Corporate card number 5555 5555 5555 4444 expires 09/28."
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "final written warning",
+     "span": "Avery Nakamura received a final written warning for repeated absences."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc41.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "0851073536",
+     "span": "Deposit to acct #0851073536 at the credit union."
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "performance improvement plan",
+     "span": "Avery Castellano was placed on a performance improvement plan for 60 days."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "disability accommodation",
+     "span": "Jordan Delacroix requested a disability accommodation for a chronic condition."
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$22,000",
+     "span": "Approved annual bonus of $22,000 for Parker Abernathy."
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "218556773",
+     "span": "Use routing no. 218556773 for the payroll transfer."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc42.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "523-34-8288",
+     "span": "Employee SSN: 523-34-8288"
+    },
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "severance package",
+     "span": "HR approved a severance package of $49,000 for Casey Marchetti."
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "performance improvement plan",
+     "span": "Reese Castellano was placed on a performance improvement plan for 60 days."
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$27,500",
+     "span": "Approved annual bonus of $27,500 for Reese Whitford."
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "284483338",
+     "span": "Deposit to acct #284483338 at the credit union."
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "3714 496353 98431",
+     "span": "Reimburse the charge on card 3714 496353 98431 for the conference fee."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc43.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "018-12-6727",
+     "span": "Parker Lindqvist (social security number 018-12-6727) completed onboarding."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "disability accommodation",
+     "span": "Reese Vasquez requested a disability accommodation for a chronic condition."
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$20,000",
+     "span": "Approved annual bonus of $20,000 for Casey Nakamura."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc44.xlsx",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "546-55-8425",
+     "span": "546-55-8425"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$101,000",
+     "span": "$101,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "658899595",
+     "span": "658899595"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "78399948",
+     "span": "78399948"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "387-43-9860",
+     "span": "387-43-9860"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$124,000",
+     "span": "$124,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "696815696",
+     "span": "696815696"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "855647786",
+     "span": "855647786"
+    },
+    {
+     "type": "HRCI",
+     "category": "termination",
+     "value": "employment will be terminated",
+     "span": "Avery Vasquez's employment will be terminated effective 04/15/2026."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/dev/doc45.txt",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$135,000",
+     "span": "Parker Whitford's base salary increases to $135,000 effective 2026-12-03."
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "77878776372",
+     "span": "Savings account 77878776372 was closed last month."
+    },
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "medical leave",
+     "span": "Quinn Lindqvist is on approved medical leave after knee surgery."
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "4012-8888-8888-1881",
+     "span": "Corporate card number 4012-8888-8888-1881 expires 09/28."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc46.txt",
+   "split": "heldout",
+   "labels": []
+  },
+  {
+   "file": "benchmark/dev/doc47.xlsx",
+   "split": "dev",
+   "labels": [
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "603-43-4220",
+     "span": "603-43-4220"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$84,000",
+     "span": "$84,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "705641955",
+     "span": "705641955"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "82801949",
+     "span": "82801949"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "290-62-8554",
+     "span": "290-62-8554"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$165,000",
+     "span": "$165,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "079723884",
+     "span": "079723884"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "03263355",
+     "span": "03263355"
+    },
+    {
+     "type": "NPPI",
+     "category": "ssn",
+     "value": "336-40-6544",
+     "span": "336-40-6544"
+    },
+    {
+     "type": "HRCI",
+     "category": "compensation",
+     "value": "$116,000",
+     "span": "$116,000"
+    },
+    {
+     "type": "NPPI",
+     "category": "routing_number",
+     "value": "264062703",
+     "span": "264062703"
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "38976797176",
+     "span": "38976797176"
+    },
+    {
+     "type": "HRCI",
+     "category": "performance",
+     "value": "final written warning",
+     "span": "Quinn Abernathy received a final written warning for repeated absences."
+    }
+   ]
+  },
+  {
+   "file": "benchmark/heldout/doc48.txt",
+   "split": "heldout",
+   "labels": [
+    {
+     "type": "HRCI",
+     "category": "medical",
+     "value": "workers' compensation claim",
+     "span": "A workers' compensation claim was filed for a back injury on the loading dock."
+    },
+    {
+     "type": "NPPI",
+     "category": "bank_account",
+     "value": "979847766230",
+     "span": "Checking account number: 979847766230"
+    },
+    {
+     "type": "NPPI",
+     "category": "credit_card",
+     "value": "6011 1111 1111 1117",
+     "span": "Corporate card number 6011 1111 1111 1117 expires 09/28."
+    }
+   ]
+  }
+ ]
+}

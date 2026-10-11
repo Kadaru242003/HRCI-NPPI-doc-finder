@@ -1,0 +1,7 @@
+Finance desk notes (synthetic)
+Checking account number: 0965119731
+Use routing no. 268846666 for the payroll transfer.
+Please terminate the nightly cron job before 2026-05-22.
+Headcount is 191 employees across 2 offices.
+Employee SSN: 310 39 8527
+Corporate card number 4111 1111 1111 1111 expires 09/28.

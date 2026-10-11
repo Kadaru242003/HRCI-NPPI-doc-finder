@@ -150,3 +150,61 @@ def test_vendored_scripts_match_their_sri_hashes(html_file):
 def test_no_cdn_markdown_or_sanitizer_dependency():
     html = open(os.path.join(ROOT, "static/index.html"), encoding="utf-8").read()
     assert not re.search(r"(cdn\.jsdelivr|unpkg|cdnjs)[^\"]*(marked|purify)", html)
+
+
+def test_delete_button_removes_the_document_and_clears_the_page(browser, base_url, tmp_path):
+    page = browser.new_page()
+    page.on("dialog", lambda d: d.accept())  # confirm() "Delete this document...?"
+    page.route(re.compile(r"^https://cdn\.tailwindcss\.com/.*"), lambda route: route.abort())
+    deleted = []
+    doc_id = "3f1c9a5e-8a1b-4a53-9c0e-2b6f7d1e4a90"
+    page.route(f"{base_url}/upload", lambda r: r.fulfill(json={
+        "doc_id": doc_id, "indexed_chunks": 1, "warning": None, "ungrounded_dropped": 0,
+        "findings": [{"type": "NPPI", "text_snippet": "***-**-6789", "category": "ssn", "confidence": 0.97, "source": "rule"}],
+    }))
+
+    def fake_delete(route):
+        deleted.append((route.request.method, route.request.url))
+        route.fulfill(json={"doc_id": doc_id, "deleted_chunks": 1, "deleted_findings": True, "deleted_files": 1})
+
+    page.route(f"{base_url}/documents/**", fake_delete)
+    sample = tmp_path / "s.txt"
+    sample.write_text("x")
+
+    page.goto(f"{base_url}/static/index.html")
+    assert page.locator("#delete-doc").is_disabled()
+    page.set_input_files("#file-input", str(sample))
+    page.click("#upload-form button[type=submit]")
+    page.wait_for_selector("#upload-status:has-text('Upload complete')")
+    assert "rule" in page.locator("#findings-body").inner_text()  # source column
+
+    page.click("#delete-doc")
+    page.wait_for_selector("#delete-status:has-text('Deleted from the server.')")
+
+    assert deleted == [("DELETE", f"{base_url}/documents/{doc_id}")]
+    assert page.locator("#doc-id-display").inner_text() == "(none yet)"
+    assert "Document deleted" in page.locator("#findings-body").inner_text()
+    assert page.locator("#chat-submit").is_disabled() and page.locator("#delete-doc").is_disabled()
+    page.close()
+
+
+def test_partial_scan_is_reported_clearly(page, base_url, tmp_path):
+    page.route(f"{base_url}/upload", lambda r: r.fulfill(json={
+        "doc_id": "3f1c9a5e-8a1b-4a53-9c0e-2b6f7d1e4a90", "indexed_chunks": 9, "ungrounded_dropped": 2,
+        "scan": {"total_batches": 4, "scanned_batches": 3, "failed_batches": 1, "retries": 3},
+        "warning": "Partial scan: the LLM scanned 3 of 4 parts of the file. 1 part(s) failed after 3 retries.",
+        "findings": [{"type": "NPPI", "text_snippet": "***-**-6789", "category": "ssn", "confidence": 0.97, "source": "rule"}],
+    }))
+    sample = tmp_path / "s.txt"
+    sample.write_text("x")
+
+    page.goto(f"{base_url}/static/index.html")
+    page.set_input_files("#file-input", str(sample))
+    page.click("#upload-form button[type=submit]")
+    page.wait_for_selector("#upload-status:has-text('PARTIAL SCAN')")
+
+    status = page.locator("#upload-status").inner_text()
+    assert "scanned only 3 of 4 parts" in status
+    assert "2 LLM finding(s) were dropped" in status
+    assert page.locator("#upload-warning").is_visible()
+    assert "Partial scan" in page.locator("#upload-warning").inner_text()
