@@ -291,13 +291,13 @@ Split: **heldout**, 24 documents (18 .txt, 6 .xlsx), model `openai/gpt-oss-120b`
 | --- | --- | ---: | --- | --- | --- |
 | NPPI | ssn | 24 | not run | 1.00 / 1.00 / 1.00 | not run |
 | NPPI | credit_card | 6 | not run | 1.00 / 1.00 / 1.00 | not run |
-| NPPI | routing_number | 24 | not run | 1.00 / 0.25 / 0.40 | not run |
-| NPPI | bank_account | 25 | not run | 1.00 / 0.28 / 0.44 | not run |
+| NPPI | routing_number | 24 | not run | 0.96 / 1.00 / 0.98 | not run |
+| NPPI | bank_account | 25 | not run | 1.00 / 0.96 / 0.98 | not run |
 | HRCI | compensation | 24 | not run | n/a / 0.00 / 0.00 | not run |
 | HRCI | performance | 11 | not run | n/a / 0.00 / 0.00 | not run |
 | HRCI | termination | 8 | not run | n/a / 0.00 / 0.00 | not run |
 | HRCI | medical | 9 | not run | n/a / 0.00 / 0.00 | not run |
-|  | all (micro) | 131 | not run | 1.00 / 0.33 / 0.49 | not run |
+|  | all (micro) | 131 | not run | 0.99 / 0.60 / 0.74 | not run |
 
 LLM columns: **not run**. Some LLM replies are not in `eval/llm_cache/` and no `GROQ_API_KEY` was available when this table was generated. Run `GROQ_API_KEY=... python scripts/evaluate.py --write-readme` to fill them in.
 
