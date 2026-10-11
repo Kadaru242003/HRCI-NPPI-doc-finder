@@ -56,9 +56,6 @@ def index_file(file_path: str, doc_id: str | None = None):
 
     if ext in [".xlsx", ".xls", ".XLSX", ".XLS"]:
         text = extract_text_from_excel(file_path)
-        print("\n=== EXTRACTED TEXT FROM EXCEL ===")
-        print(text[:500])
-        print("=================================\n")
     else:
         text = load_text_from_file(file_path)
 
