@@ -263,6 +263,8 @@ curl -F "doc_id=3f1c9a5e-8a1b-4a53-9c0e-2b6f7d1e4a90" -F "question=show only NPP
 If no chunks exist for `doc_id`, the response is `{"answer": "No document found.", "retrieved_chunk_ids": [],
 "warning": null}` and the LLM isn't called. The answer is free text from the model, not structured JSON.
 
+The web UI renders answers as Markdown with vendored, SRI-pinned marked and DOMPurify (`static/vendor/`), showing raw HTML as text and keeping only http(s) and mailto links, which open in a new tab; `static/markdown-test.html` demonstrates hostile answers rendering harmlessly.
+
 | Case | Result |
 | --- | --- |
 | LLM call fails (for example, a retired model) | `502` with `detail` naming the model and the reason, plus `retrieved_chunk_ids` |
