@@ -101,6 +101,7 @@ async def upload_file(file: UploadFile = File(...)):
         "doc_id": doc_id,
         "indexed_chunks": index_info.get("num_chunks", 0),
         "findings": detection.findings,
+        "ungrounded_dropped": detection.ungrounded_dropped,
         "warning": detection.warning,
     }
 

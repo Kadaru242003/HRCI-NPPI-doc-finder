@@ -151,7 +151,7 @@ def test_ask_rejects_invalid_top_k(client, fake_llm, top_k):
 
 def test_data_survives_a_client_restart(client, fake_llm, chroma_dir):
     fake_llm.reply = json.dumps(
-        [{"type": "HRCI", "text_snippet": "Salary: $102,000", "category": "salary", "confidence": 0.9}]
+        [{"type": "HRCI", "text_snippet": "salary: $102,000", "category": "salary", "confidence": 0.9}]
     )
     doc_id = upload(client, "employee.txt", "Employee salary: $102,000 and bonus")["doc_id"]
     old_client = store.client
@@ -162,7 +162,7 @@ def test_data_survives_a_client_restart(client, fake_llm, chroma_dir):
 
     assert store.client is not old_client
     assert rag.load_chunks_for_doc(doc_id) == ["Employee salary: $102,000 and bonus"]
-    assert rag.load_findings(doc_id)[0]["text_snippet"] == "Salary: $102,000"
+    assert rag.load_findings(doc_id)[0]["text_snippet"] == "salary: $102,000"
 
     fake_llm.reply = "Answer"
     res = client.post("/ask", data={"doc_id": doc_id, "question": "salary"})
