@@ -119,6 +119,87 @@ def summarize_findings(findings, max_examples: int = 3) -> str:
     return "\n".join(lines)
 
 
+def load_scan_info(doc_id: str):
+    """{"total_batches", "failed_batches"} stored with the findings, or None."""
+    results = store.collection.get(ids=[f"{doc_id}_findings"], include=["metadatas"])
+    for meta in results["metadatas"]:
+        if meta:
+            return {"total_batches": meta.get("total_batches", 0), "failed_batches": meta.get("failed_batches", 0)}
+    return None
+
+
+# --------------------------------------------------------
+# Category questions ("show only NPPI", "list every SSN") are answered from the
+# stored whole-file findings, not from similarity search over a few chunks.
+# --------------------------------------------------------
+_LISTING_INTENT = re.compile(
+    r"\b(?:show|list|only|all|every|each|how\s+many|which|find|count|give\s+me)\b", re.IGNORECASE
+)
+# (pattern, types, categories, label); checked in order, every match is included
+_CATEGORY_TERMS = [
+    (r"\bhrci\b|\bhr\s+confidential", {"HRCI"}, None, "HRCI"),
+    (r"\bnppi\b|non-?public\s+personal", {"NPPI"}, None, "NPPI"),
+    (r"\bssns?\b|social\s+security", None, {"ssn"}, "SSNs"),
+    (r"\b(?:credit\s+|debit\s+|payment\s+)?cards?\b", None, {"credit_card"}, "card numbers"),
+    (r"\brouting\b|\baba\b", None, {"routing_number"}, "routing numbers"),
+    (r"\b(?:bank\s+)?accounts?\b", None, {"bank_account"}, "account numbers"),
+    (r"\bsalar(?:y|ies)\b|\bcompensation\b|\bbonus(?:es)?\b|\bpay\b|\bwages?\b", None, {"compensation"}, "compensation"),
+    (r"\bperformance\b|\bpips?\b|\bwarnings?\b", None, {"performance"}, "performance items"),
+    (r"\bterminations?\b|\bseverance\b|\bfired\b", None, {"termination"}, "terminations"),
+    (r"\bmedical\b|\bhealth\b|\bmedical\s+leave\b|\binjur(?:y|ies)\b|\bdisabilit(?:y|ies)\b", None, {"medical"}, "medical items"),
+]
+
+
+def route_question(question: str):
+    """A findings filter for listing questions about a type or category, else None.
+
+    Returns {"types": set, "categories": set, "label": str}. Questions without a
+    listing word ("what is Jane's salary?") or without a category go to retrieval.
+    """
+    q = question or ""
+    if not _LISTING_INTENT.search(q):
+        return None
+    types, categories, labels = set(), set(), []
+    for pattern, t, c, label in _CATEGORY_TERMS:
+        if re.search(pattern, q, re.IGNORECASE):
+            types |= t or set()
+            categories |= c or set()
+            labels.append(label)
+    if not labels:
+        return None
+    return {"types": types, "categories": categories, "label": " and ".join(labels)}
+
+
+def answer_from_findings(route: dict, findings, scan=None) -> str:
+    """Deterministic Markdown answer listing the matching stored findings (masked)."""
+    if findings is None:
+        return "No whole-file scan result is stored for this document."
+    matching = [
+        f for f in findings
+        if isinstance(f, dict)
+        and (str(f.get("type", "")).upper() in route["types"] or str(f.get("category", "")).lower() in route["categories"])
+    ]
+    if not matching:
+        answer = f"The whole-file scan found no {route['label']} in this document."
+    else:
+        lines = [
+            f"The whole-file scan found **{len(matching)}** {route['label']} item(s) (values masked):",
+            "",
+            "| Type | Category | Value | Source |",
+            "| --- | --- | --- | --- |",
+        ]
+        for f in matching:
+            value = mask_snippet(f).replace("|", "\\|").replace("\n", " ")
+            lines.append(f"| {f.get('type', '')} | {f.get('category', '')} | {value} | {f.get('source', '')} |")
+        answer = "\n".join(lines)
+    if scan and scan.get("failed_batches"):
+        answer += (
+            f"\n\nNote: only {scan['total_batches'] - scan['failed_batches']} of {scan['total_batches']} "
+            f"parts of this file were scanned by the LLM, so HRCI items may be missing."
+        )
+    return answer
+
+
 _NO_SENSITIVE_DATA = re.compile(
     r"\b(?:no|not\s+(?:any|contain\s+any)|none\s+of\s+the)\s+(?:\w+\s+){0,3}?"
     r"(?:sensitive|confidential|personal|hrci|nppi|pii)\b"
@@ -477,7 +558,10 @@ def detect_hrci_nppi(doc_id: str):
         store.collection.add(
             ids=[f"{doc_id}_findings"],
             documents=[findings_text],
-            metadatas=[{"doc_id": doc_id, "kind": "findings", "created_at": time.time()}],
+            metadatas=[{
+                "doc_id": doc_id, "kind": "findings", "created_at": time.time(),
+                "total_batches": result.total_batches, "failed_batches": len(result.errors),
+            }],
             embeddings=emb,
         )
     except Exception as e:
