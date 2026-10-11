@@ -206,7 +206,8 @@ def test_text_after_4000_chars_is_detected(client, fake_llm):
     body = upload(client, "long.txt", text)
 
     assert body["indexed_chunks"] > 4
-    assert {"type": "NPPI", "text_snippet": "987-65-4321", "category": "ssn", "confidence": 0.9} in body[
+    # Area 987 is not a valid SSN area, so only the (fake) LLM reports it: proof it saw the end of the file
+    assert {"type": "NPPI", "text_snippet": "987-65-4321", "category": "ssn", "confidence": 0.9, "source": "llm"} in body[
         "findings"
     ]
     assert len(fake_llm.calls) > 1

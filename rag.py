@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass, field
 from groq import Groq
 
+import detectors
 import store
 from masking import mask_snippet
 
@@ -138,17 +139,19 @@ def build_user_prompt(context: str) -> str:
     return f"""
 Tag any spans in the text that match these categories.
 
-HRCI (Human Resource Confidential Information) examples:
-- salaries, bonuses, compensation
-- performance reviews, warnings, PIP
-- termination / severance
-- health or medical claims related to employment
+HRCI (Human Resource Confidential Information), categories:
+- compensation: salaries, bonuses, offer amounts
+- performance: performance reviews, warnings, PIPs
+- termination: terminations, severance
+- medical: medical leave, injuries, health or disability information related to employment
 
-NPPI (Non-Public Personal Information) examples:
-- SSN-like patterns (e.g., 123-45-6789)
-- bank or routing numbers
-- account / loan numbers
-- credit card numbers
+NPPI (Non-Public Personal Information), categories:
+- ssn: Social Security numbers (e.g., 123-45-6789)
+- credit_card: payment card numbers
+- routing_number: bank routing (ABA) numbers
+- bank_account: bank account or loan numbers
+
+Use "other" for anything sensitive that fits none of these.
 
 Return ONLY a JSON array. No explanation. If nothing matches, return [].
 
@@ -156,7 +159,7 @@ Each JSON object must be:
 {{
   "type": "HRCI" or "NPPI",
   "text_snippet": "<exact substring>",
-  "category": "<one word category>",
+  "category": "<one of the categories above>",
   "confidence": <float between 0.0 and 1.0>
 }}
 
@@ -257,18 +260,60 @@ def batch_chunks(chunks: list[str], max_chars: int = DETECT_BATCH_CHARS) -> list
     return batches
 
 
+# Canonical categories (see eval/README.md); LLM categories are mapped onto them by keyword.
+CATEGORY_KEYWORDS = [
+    ("ssn", ("ssn", "social")),
+    ("credit_card", ("card", "credit")),
+    ("routing_number", ("routing", "aba")),
+    ("bank_account", ("account", "bank", "iban")),
+    ("compensation", ("salary", "bonus", "compensation", "pay", "wage")),
+    ("performance", ("performance", "pip", "warning", "review")),
+    ("termination", ("termination", "severance", "dismiss", "fired")),
+    ("medical", ("medical", "health", "leave", "injury", "disability", "workers")),
+]
+
+
+def canonical_category(raw):
+    """One of the canonical categories, or None if the label matches none of them."""
+    text = str(raw or "").lower()
+    for category, keywords in CATEGORY_KEYWORDS:
+        if any(k in text for k in keywords):
+            return category
+    return None
+
+
 def _finding_key(item):
     if isinstance(item, dict) and isinstance(item.get("text_snippet"), str):
+        ftype = str(item.get("type", "")).upper()
+        digits = re.sub(r"\D", "", item["text_snippet"])
+        if ftype == "NPPI" and len(digits) >= 4:
+            # "SSN: 123-45-6789" and "123 45 6789" are the same value
+            return ("nppi-digits", digits)
         snippet = " ".join(item["text_snippet"].split()).casefold()
-        return ("span", str(item.get("type", "")).upper(), snippet)
+        return ("span", ftype, snippet)
     return ("raw", json.dumps(item, sort_keys=True, default=str))
 
 
-def merge_findings(batches_of_findings) -> list:
-    """Merge per-batch findings, keeping one entry per (type, snippet).
+def _wins_over(new, old) -> bool:
+    """A rule finding beats an LLM finding; otherwise the higher confidence wins."""
+    new_rule = isinstance(new, dict) and new.get("source") == "rule"
+    old_rule = isinstance(old, dict) and old.get("source") == "rule"
+    if new_rule != old_rule:
+        return new_rule
+    old_conf = old.get("confidence") if isinstance(old, dict) else None
+    new_conf = new.get("confidence") if isinstance(new, dict) else None
+    return isinstance(new_conf, (int, float)) and (
+        not isinstance(old_conf, (int, float)) or new_conf > old_conf
+    )
 
-    Chunks overlap, so the same span is often reported more than once; the
-    entry with the highest confidence wins and first-seen order is kept.
+
+def merge_findings(batches_of_findings) -> list:
+    """Merge findings, keeping one entry per value.
+
+    Chunks overlap and rules and the LLM can report the same value, so
+    duplicates are common. A rule finding wins over an LLM finding; between
+    findings of the same source the highest confidence wins. First-seen
+    order is kept.
     """
     merged = {}
     for findings in batches_of_findings:
@@ -276,21 +321,25 @@ def merge_findings(batches_of_findings) -> list:
             key = _finding_key(item)
             if key not in merged:
                 merged[key] = item
-                continue
-            old_conf = merged[key].get("confidence") if isinstance(merged[key], dict) else None
-            new_conf = item.get("confidence") if isinstance(item, dict) else None
-            if isinstance(new_conf, (int, float)) and (
-                not isinstance(old_conf, (int, float)) or new_conf > old_conf
-            ):
+            elif _wins_over(item, merged[key]):
                 merged[key] = item
     return list(merged.values())
+
+
+def _normalize_llm_finding(item):
+    if not isinstance(item, dict):
+        return item
+    item = dict(item, source="llm")
+    raw = item.get("category")
+    item["category"] = canonical_category(raw) or str(raw or "other").strip().lower() or "other"
+    return item
 
 
 @dataclass
 class DetectionResult:
     findings: list
     total_batches: int
-    errors: list = field(default_factory=list)  # one entry per failed batch
+    errors: list = field(default_factory=list)  # one entry per failed LLM batch
 
     @property
     def warning(self):
@@ -351,21 +400,15 @@ def detect_hrci_nppi(doc_id: str):
         print(f"No text found for document {doc_id}.")
         return DetectionResult(findings=[], total_batches=0)
 
-    batches = batch_chunks(chunks)
-    per_batch, errors = [], []
-    for i, text in enumerate(batches):
-        try:
-            per_batch.append(_detect_batch(text, f"batch {i + 1}/{len(batches)}"))
-        except LLMError as e:
-            errors.append(str(e))
-
-    if len(errors) == len(batches):
+    result = scan_batches(batch_chunks(chunks))
+    if result.total_batches and len(result.errors) == result.total_batches:
+        rule_count = sum(1 for f in result.findings if f.get("source") == "rule")
         raise LLMError(
-            f"LLM detection failed for every part of the file ({len(batches)} of "
-            f"{len(batches)}), so the file was NOT scanned. {errors[0]}"
+            f"LLM detection failed for every part of the file ({result.total_batches} of "
+            f"{result.total_batches}), so the file was NOT scanned for HRCI "
+            f"(rule-based checks found {rule_count} structured NPPI value(s)). {result.errors[0]}"
         )
-
-    findings = merge_findings(per_batch)
+    findings = result.findings
 
     # Store findings in Chroma (read back by load_findings)
     try:
@@ -380,7 +423,25 @@ def detect_hrci_nppi(doc_id: str):
     except Exception as e:
         print("Failed to store findings in Chroma:", e)
 
-    return DetectionResult(findings=findings, total_batches=len(batches), errors=errors)
+    return result
+
+
+def scan_batches(batches: list, use_llm: bool = True, use_rules: bool = True) -> DetectionResult:
+    """Hybrid detection over text batches: rules for structured NPPI, the LLM for the rest.
+
+    Pure function of the text (no storage), shared by the app and scripts/evaluate.py.
+    """
+    per_batch, errors = [], []
+    for i, text in enumerate(batches):
+        label = f"batch {i + 1}/{len(batches)}"
+        if use_rules:
+            per_batch.append(detectors.detect(text))
+        if use_llm:
+            try:
+                per_batch.append([_normalize_llm_finding(f) for f in _detect_batch(text, label)])
+            except LLMError as e:
+                errors.append(str(e))
+    return DetectionResult(findings=merge_findings(per_batch), total_batches=len(batches) if use_llm else 0, errors=errors)
 
 
 # --------------------------------------------------------

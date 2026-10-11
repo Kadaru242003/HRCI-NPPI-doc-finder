@@ -19,6 +19,13 @@ FINDINGS = [
     {"type": "NPPI", "text_snippet": "123-45-6789", "category": "ssn", "confidence": 0.99},
 ]
 
+# What the hybrid pipeline returns for FINDINGS: the SSN comes from the rule detector
+# (rules run first and win over the LLM), the LLM's "salary" maps to "compensation".
+EXPECTED = [
+    {"type": "NPPI", "text_snippet": "123-45-6789", "category": "ssn", "confidence": 0.97, "source": "rule"},
+    {"type": "HRCI", "text_snippet": "Salary: $102,000", "category": "compensation", "confidence": 0.93, "source": "llm"},
+]
+
 
 def make_xlsx() -> bytes:
     wb = Workbook()
@@ -49,7 +56,7 @@ def test_upload_txt_returns_parsed_findings(client, fake_llm, tmp_path):
     body = res.json()
     uuid.UUID(body["doc_id"])  # valid UUID
     assert body["indexed_chunks"] == 1
-    assert body["findings"] == FINDINGS
+    assert body["findings"] == EXPECTED
     assert body["warning"] is None
 
     # One LLM call, with the document text in the prompt
@@ -76,7 +83,8 @@ def test_upload_xlsx_includes_every_sheet_and_header_row(client, fake_llm):
     assert res.status_code == 200
     body = res.json()
     assert body["indexed_chunks"] == 1
-    assert body["findings"] == FINDINGS
+    routing = {"type": "NPPI", "text_snippet": "021000021", "category": "routing_number", "confidence": 0.93, "source": "rule"}
+    assert body["findings"] == [EXPECTED[0], routing, EXPECTED[1]]
 
     prompt = fake_llm.last_user_prompt()
     for cell in ["Name", "SSN", "Salary", "Jane Doe", "123-45-6789", "102000"]:
@@ -220,5 +228,5 @@ def test_findings_are_not_fed_back_into_chat_context(client, fake_llm):
     fake_llm.reply = json.dumps(FINDINGS)
     doc_id = upload(client, "employee.txt", TXT_DOC.encode(), "text/plain").json()["doc_id"]
 
-    assert rag.load_findings(doc_id) == FINDINGS
+    assert rag.load_findings(doc_id) == EXPECTED
     assert all('"text_snippet"' not in chunk for chunk in rag.load_chunks_for_doc(doc_id))
