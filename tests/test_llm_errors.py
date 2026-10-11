@@ -99,7 +99,7 @@ def test_some_batches_failing_returns_findings_and_a_warning(client, fake_llm):
         if state["n"] == 2:
             raise groq_model_not_found()
         first_word = messages[-1]["content"].split("Text to label:\n---\n", 1)[1].split()[0]
-        return json.dumps([{"type": "HRCI", "text_snippet": first_word, "category": "x", "confidence": 0.9}])
+        return json.dumps([{"type": "HRCI", "text_snippet": first_word, "category": "compensation", "confidence": 0.9}])
 
     fake_llm.reply = second_batch_fails
     fake_llm.error = None
