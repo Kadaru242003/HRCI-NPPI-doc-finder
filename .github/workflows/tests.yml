@@ -26,6 +26,9 @@ jobs:
           python -c "import chromadb, fastapi, groq, onnxruntime, openpyxl, pandas, tokenizers, xlrd"
           python -c "import importlib.util as u, sys; bad = [m for m in ('torch', 'sentence_transformers', 'transformers') if u.find_spec(m)]; sys.exit(f'unexpectedly installed: {bad}' if bad else 0)"
 
+      - name: Install Chromium for the browser tests
+        run: python -m playwright install --with-deps chromium
+
       - name: Run tests
         run: pytest -v
 
