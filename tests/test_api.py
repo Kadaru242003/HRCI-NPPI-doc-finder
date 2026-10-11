@@ -185,19 +185,21 @@ def test_ask_answers_with_document_context(client, fake_llm):
     doc_id = upload(client, "employee.txt", TXT_DOC.encode(), "text/plain").json()["doc_id"]
     fake_llm.reply = "- **Salary: $102,000** (HRCI)"
 
-    res = client.post("/ask", data={"doc_id": doc_id, "question": "show only HRCI"})
+    # A free-form question goes to retrieval + LLM ("show only HRCI" is answered from findings)
+    res = client.post("/ask", data={"doc_id": doc_id, "question": "what does the file say about Jane Doe?"})
 
     assert res.status_code == 200
     assert res.json() == {
         "answer": "- **Salary: $102,000** (HRCI)",
         "retrieved_chunk_ids": [f"{doc_id}_0"],
         "warning": None,
+        "route": "retrieval",
     }
 
     call = fake_llm.calls[-1]
     assert call["model"] == "openai/gpt-oss-120b"
     prompt = fake_llm.last_user_prompt()
-    assert "show only HRCI" in prompt
+    assert "what does the file say about Jane Doe?" in prompt
     assert "Salary: $102,000" in prompt
 
 
@@ -216,7 +218,7 @@ def test_ask_unknown_document_does_not_call_llm(client, fake_llm):
     res = client.post("/ask", data={"doc_id": "does-not-exist", "question": "summarize"})
 
     assert res.status_code == 200
-    assert res.json() == {"answer": "No document found.", "retrieved_chunk_ids": [], "warning": None}
+    assert res.json() == {"answer": "No document found.", "retrieved_chunk_ids": [], "warning": None, "route": "retrieval"}
     assert fake_llm.calls == []
 
 

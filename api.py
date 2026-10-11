@@ -185,10 +185,24 @@ async def ask_question(
       'show only HRCI', 'show only NPPI', 'show only salary', etc.
     """
 
+    # Category questions are answered from the whole-file findings, not from a few similar chunks
+    route = rag.route_question(question)
+    if route is not None:
+        findings = load_findings(doc_id)
+        if findings is None and not rag.load_chunks_for_doc(doc_id):
+            return JSONResponse(content={"answer": "No document found.", "retrieved_chunk_ids": [], "warning": None, "route": "findings"})
+        log.info("ask doc=%s: answered from stored findings", doc_id)
+        return JSONResponse(content={
+            "answer": rag.answer_from_findings(route, findings, rag.load_scan_info(doc_id)),
+            "retrieved_chunk_ids": [],
+            "warning": None,
+            "route": "findings",
+        })
+
     chunks = retrieve_chunks(doc_id, question, top_k)
 
     if not chunks:
-        return JSONResponse(content={"answer": "No document found.", "retrieved_chunk_ids": [], "warning": None})
+        return JSONResponse(content={"answer": "No document found.", "retrieved_chunk_ids": [], "warning": None, "route": "retrieval"})
 
     retrieved_ids = [chunk["id"] for chunk in chunks]
 
@@ -267,6 +281,7 @@ Important:
         "answer": answer,
         "retrieved_chunk_ids": retrieved_ids,
         "warning": warning,
+        "route": "retrieval",
     })
 
 
