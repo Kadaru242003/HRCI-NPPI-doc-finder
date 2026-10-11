@@ -1,9 +1,9 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+import logging
 import os
 import uuid
-import json
 
 from ingest import index_file
 from masking import mask_finding, mask_text
@@ -33,6 +33,10 @@ groq_client = Groq(api_key=GROQ_KEY)
 # ---------------------------------------------------------
 # FASTAPI APP SETUP
 # ---------------------------------------------------------
+# Logs carry counts and IDs only: never document text, model output or findings.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("riskbot")
+
 app = FastAPI()
 
 UPLOAD_DIR = "./data"
@@ -92,6 +96,7 @@ async def upload_file(file: UploadFile = File(...)):
         detection = detect_hrci_nppi(doc_id)
     except LLMError as e:
         # Nothing was scanned: report an error instead of an empty (clean-looking) result
+        log.warning("upload doc=%s: LLM detection failed for every batch", doc_id)
         return JSONResponse(status_code=502, content={
             "detail": str(e),
             "doc_id": doc_id,
@@ -107,9 +112,13 @@ async def upload_file(file: UploadFile = File(...)):
         "warning": detection.warning,
     }
 
-    print("\n=== OUTGOING RESPONSE ===")
-    print(json.dumps(response, indent=2))
-    print("=========================\n")
+    log.info(
+        "upload doc=%s chunks=%d findings=%d (rule=%d, llm=%d) ungrounded_dropped=%d failed_batches=%d/%d",
+        doc_id, response["indexed_chunks"], len(detection.findings),
+        sum(1 for f in detection.findings if isinstance(f, dict) and f.get("source") == "rule"),
+        sum(1 for f in detection.findings if isinstance(f, dict) and f.get("source") == "llm"),
+        detection.ungrounded_dropped, len(detection.errors), detection.total_batches,
+    )
 
     return JSONResponse(content=response)
 
@@ -183,7 +192,7 @@ Important:
             temperature=0.2,
         )
     except Exception as e:
-        print("Groq error in /ask:", e)
+        log.warning("ask doc=%s: LLM call failed: %s", doc_id, type(e).__name__)
         return JSONResponse(status_code=502, content={
             "detail": f"The LLM request failed (model '{rag.LLM_MODEL}'): {describe_llm_error(e)}",
             "retrieved_chunk_ids": retrieved_ids,
