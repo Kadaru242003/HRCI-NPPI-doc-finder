@@ -42,8 +42,9 @@ def test_prompt_carries_masked_findings_summary_and_excerpt_rule(client, fake_ll
     prompt = fake_llm.last_user_prompt()
 
     assert "The whole-file scan found 2 sensitive item(s)" in prompt
-    assert "NPPI / ssn: 1 (***-**-6789)" in prompt
-    assert "HRCI / compensation: 1 (Salary: $***,***)" in prompt
+    # Masked values are Markdown-escaped (asterisks would otherwise read as emphasis)
+    assert f"NPPI / ssn: 1 ({rag.md_escape('***-**-6789')})" in prompt
+    assert f"HRCI / compensation: 1 ({rag.md_escape('Salary: $***,***')})" in prompt
     assert "Never claim the document has no sensitive or confidential data" in prompt
     assert "only 1 excerpt(s)" in prompt
 
@@ -98,6 +99,7 @@ def test_summary_groups_counts_and_limits_examples():
     summary = rag.summarize_findings(findings)
 
     assert "found 5 sensitive item(s)" in summary
-    assert "NPPI / ssn: 5 (***-**-6780; ***-**-6781; ***-**-6782, +2 more)" in summary
+    examples = "; ".join(rag.md_escape(f"***-**-{n}") for n in (6780, 6781, 6782))
+    assert f"NPPI / ssn: 5 ({examples}, +2 more)" in summary
     assert "123-45" not in summary
     assert rag.summarize_findings(None).startswith("No whole-file scan result")

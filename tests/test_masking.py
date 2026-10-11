@@ -78,4 +78,5 @@ def test_ask_never_sends_or_returns_raw_values(client, fake_llm):
     for raw in RAW_VALUES:
         assert raw not in prompt, raw
         assert raw not in answer, raw
-    assert "***-**-6789" in answer and "$***,***" in answer
+    # Masked values inserted into the (Markdown) answer are escaped
+    assert "\\*\\*\\*-\\*\\*-6789" in answer and "$\\*\\*\\*,\\*\\*\\*" in answer
