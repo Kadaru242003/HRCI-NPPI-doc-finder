@@ -104,7 +104,7 @@ def _digit_pattern(digits: str):
 _NUMBER = re.compile(r"\d[\d ,.-]*\d|\d")
 
 
-def mask_text(text: str, findings) -> str:
+def mask_text(text: str, findings, escape=None) -> str:
     """Mask every known sensitive value in free text (excerpts sent to the LLM, LLM answers).
 
     1. Each stored finding's snippet is replaced by its masked form.
@@ -112,27 +112,31 @@ def mask_text(text: str, findings) -> str:
        dash or comma format: NPPI as a whole ("123456789" for "123-45-6789", last 4
        kept), HRCI per number ("$102000" for "Salary: $102,000", fully masked).
     3. Structured NPPI found by the rule detectors is masked too.
+
+    `escape`, if given, is applied to each inserted masked value (e.g. Markdown
+    escaping when the text is rendered as Markdown); the rest of the text is untouched.
     """
     import detectors  # local import: detectors has no dependency on this module
 
+    escape = escape or (lambda value: value)
     text = text or ""
     for finding in sorted((f for f in findings or [] if isinstance(f, dict)), key=lambda f: -len(str(f.get("text_snippet", "")))):
         snippet = str(finding.get("text_snippet", ""))
         if not snippet:
             continue
-        text = text.replace(snippet, mask_snippet(finding))
+        text = text.replace(snippet, escape(mask_snippet(finding)))
         if str(finding.get("type", "")).upper() == "NPPI":
             digits = re.sub(r"\D", "", snippet)
             if len(digits) >= 6:
-                text = _digit_pattern(digits).sub(lambda m: mask_digits(m.group(), keep_last=4), text)
+                text = _digit_pattern(digits).sub(lambda m: escape(mask_digits(m.group(), keep_last=4)), text)
         else:
             for number in _NUMBER.findall(snippet):
                 digits = re.sub(r"\D", "", number)
                 if len(digits) >= 3:
-                    text = _digit_pattern(digits).sub(lambda m: mask_digits(m.group(), keep_last=0), text)
+                    text = _digit_pattern(digits).sub(lambda m: escape(mask_digits(m.group(), keep_last=0)), text)
             # Names in HRCI findings are masked wherever they appear, not only inside the snippet
             for name in find_names(snippet):
                 text = _replace_name(text, name)
     for rule_finding in sorted(detectors.detect(text), key=lambda f: -len(f["text_snippet"])):
-        text = text.replace(rule_finding["text_snippet"], mask_snippet(rule_finding))
+        text = text.replace(rule_finding["text_snippet"], escape(mask_snippet(rule_finding)))
     return text

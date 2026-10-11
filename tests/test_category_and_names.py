@@ -45,4 +45,4 @@ def test_names_in_hrci_snippets_are_masked_in_upload_and_ask(client, fake_llm):
 
     # Category question answered from the stored findings
     listed = client.post("/ask", data={"doc_id": body["doc_id"], "question": "show only HRCI"}).json()["answer"]
-    assert "J. S.'s base salary is $**,***" in listed and "Jordan" not in listed
+    assert "J. S.'s base salary is $\\*\\*,\\*\\*\\*" in listed and "Jordan" not in listed  # Markdown-escaped

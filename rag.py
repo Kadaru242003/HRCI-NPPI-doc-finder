@@ -93,6 +93,18 @@ def load_findings(doc_id: str):
 # --------------------------------------------------------
 # Findings summary for /ask, and a guard against answers that contradict it
 # --------------------------------------------------------
+_MARKDOWN_SPECIAL = re.compile(r"([\\`*_|\[\]])")
+
+
+def md_escape(value) -> str:
+    """Escape Markdown special characters (\\ ` * _ | [ ]) in a value inserted into Markdown.
+
+    Masked values are full of asterisks ("$**,***", "***-**-6789"), which Markdown
+    would otherwise render as emphasis.
+    """
+    return _MARKDOWN_SPECIAL.sub(r"\\\1", str(value))
+
+
 def summarize_findings(findings, max_examples: int = 3) -> str:
     """Compact, masked summary of a document's stored findings for the /ask prompt."""
     if findings is None:
@@ -115,7 +127,7 @@ def summarize_findings(findings, max_examples: int = 3) -> str:
             masked = mask_snippet(item)
             examples.append(masked if len(masked) <= 60 else masked[:57] + "...")
         more = f", +{len(items) - max_examples} more" if len(items) > max_examples else ""
-        lines.append(f"- {ftype} / {category}: {len(items)} ({'; '.join(examples)}{more})")
+        lines.append(f"- {md_escape(ftype)} / {md_escape(category)}: {len(items)} ({'; '.join(md_escape(e) for e in examples)}{more})")
     return "\n".join(lines)
 
 
@@ -189,8 +201,9 @@ def answer_from_findings(route: dict, findings, scan=None) -> str:
             "| --- | --- | --- | --- |",
         ]
         for f in matching:
-            value = mask_snippet(f).replace("|", "\\|").replace("\n", " ")
-            lines.append(f"| {f.get('type', '')} | {f.get('category', '')} | {value} | {f.get('source', '')} |")
+            value = md_escape(mask_snippet(f).replace("\n", " "))
+            cells = [md_escape(f.get("type", "")), md_escape(f.get("category", "")), value, md_escape(f.get("source", ""))]
+            lines.append("| " + " | ".join(cells) + " |")
         answer = "\n".join(lines)
     if scan and scan.get("failed_batches"):
         answer += (
