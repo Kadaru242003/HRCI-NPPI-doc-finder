@@ -119,6 +119,12 @@ def chroma_dir(tmp_path):
 def client(monkeypatch, tmp_path, fake_llm, chroma_dir):
     from fastapi.testclient import TestClient
 
+    import limits
+
+    # Tests make many requests; rate-limit tests lower these themselves.
+    limits.rate_limiter.reset()
+    monkeypatch.setattr(limits, "UPLOADS_PER_MINUTE", 1000)
+    monkeypatch.setattr(limits, "ASKS_PER_MINUTE", 1000)
     monkeypatch.setattr(api, "UPLOAD_DIR", str(tmp_path))
     return TestClient(api.app)
 
