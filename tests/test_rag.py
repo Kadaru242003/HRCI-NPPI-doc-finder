@@ -207,7 +207,7 @@ def test_text_after_4000_chars_is_detected(client, fake_llm):
 
     assert body["indexed_chunks"] > 4
     # Area 987 is not a valid SSN area, so only the (fake) LLM reports it: proof it saw the end of the file
-    assert {"type": "NPPI", "text_snippet": "987-65-4321", "category": "ssn", "confidence": 0.9, "source": "llm"} in body[
+    assert {"type": "NPPI", "text_snippet": "***-**-4321", "category": "ssn", "confidence": 0.9, "source": "llm"} in body[
         "findings"
     ]
     assert len(fake_llm.calls) > 1
@@ -236,7 +236,7 @@ def test_span_in_chunk_overlap_is_reported_once(client, fake_llm):
 
     labelled = [text_to_label(c["messages"]) for c in fake_llm.calls]
     assert sum("123-45-6789" in t for t in labelled) == 2
-    assert [f["text_snippet"] for f in body["findings"]] == ["123-45-6789"]
+    assert [f["text_snippet"] for f in body["findings"]] == ["***-**-6789"]
 
 
 def test_one_failed_batch_does_not_drop_other_findings(client, fake_llm):
@@ -253,7 +253,7 @@ def test_one_failed_batch_does_not_drop_other_findings(client, fake_llm):
 
     body = upload(client, "flaky.txt", text)
 
-    assert [f["text_snippet"] for f in body["findings"]] == ["111-22-3333"]
+    assert [f["text_snippet"] for f in body["findings"]] == ["***-**-3333"]
     assert body["warning"].startswith("LLM detection failed for 1 of 2 parts of the file")
 
 

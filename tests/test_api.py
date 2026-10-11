@@ -6,6 +6,7 @@ import pytest
 from openpyxl import Workbook
 
 import rag
+from masking import mask_finding
 
 TXT_DOC = (
     "Employee: Jane Doe\n"
@@ -56,7 +57,8 @@ def test_upload_txt_returns_parsed_findings(client, fake_llm, tmp_path):
     body = res.json()
     uuid.UUID(body["doc_id"])  # valid UUID
     assert body["indexed_chunks"] == 1
-    assert body["findings"] == EXPECTED
+    assert body["findings"] == [mask_finding(f) for f in EXPECTED]
+    assert body["findings"][0]["text_snippet"] == "***-**-6789"  # API responses are masked
     assert body["warning"] is None
 
     # One LLM call, with the document text in the prompt
@@ -85,7 +87,7 @@ def test_upload_xlsx_includes_every_sheet_and_header_row(client, fake_llm):
     assert body["indexed_chunks"] == 1
     routing = {"type": "NPPI", "text_snippet": "021000021", "category": "routing_number", "confidence": 0.93, "source": "rule"}
     # The LLM's "Salary: $102,000" is not in the sheet (the cell is 102000), so grounding drops it
-    assert body["findings"] == [EXPECTED[0], routing]
+    assert body["findings"] == [mask_finding(EXPECTED[0]), mask_finding(routing)]
     assert body["ungrounded_dropped"] == 1
 
     prompt = fake_llm.last_user_prompt()
