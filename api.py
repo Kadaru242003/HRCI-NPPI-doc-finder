@@ -7,7 +7,16 @@ import json
 
 from ingest import index_file
 import rag
-from rag import DEFAULT_TOP_K, LLMError, describe_llm_error, detect_hrci_nppi, retrieve_chunks
+from rag import (
+    DEFAULT_TOP_K,
+    LLMError,
+    contradicts_findings,
+    describe_llm_error,
+    detect_hrci_nppi,
+    load_findings,
+    retrieve_chunks,
+    summarize_findings,
+)
 
 # ---------------------------------------------------------
 #  GROQ CLIENT (GLOBAL)
@@ -127,11 +136,16 @@ async def ask_question(
     retrieved_ids = [chunk["id"] for chunk in chunks]
 
     context = "\n---\n".join(chunk["text"] for chunk in chunks)
+    findings = load_findings(doc_id)
 
     prompt = f"""
 You are an assistant helping users analyze sensitive HR/Finance text.
 
-Document Context (the excerpts most relevant to the question):
+Whole-document scan results (authoritative for what the document contains):
+------------------
+{summarize_findings(findings)}
+
+Document Context (only {len(chunks)} excerpt(s) most relevant to the question, NOT the whole document):
 ------------------
 {context}
 
@@ -145,6 +159,12 @@ Filtering Rules:
 - If "show only salary", filter only salary-related spans.
 - If asked to summarize, provide a clean, concise summary.
 - Be professional and clear.
+
+Important:
+- You only see excerpts. Never claim the document has no sensitive or confidential data
+  based on the excerpts alone. Use the whole-document scan results above for that.
+- If the scan results list items that are not in the excerpts, say they exist elsewhere
+  in the document.
 """
 
     # Call GROQ LLM
@@ -173,9 +193,16 @@ Filtering Rules:
             "retrieved_chunk_ids": retrieved_ids,
         })
 
-    warning = None
+    warnings = []
     if getattr(choice, "finish_reason", None) == "length":
-        warning = "The answer was cut off because the model reached its output token limit."
+        warnings.append("The answer was cut off because the model reached its output token limit.")
+    if contradicts_findings(answer, findings):
+        warnings.append(
+            f"This answer says there is no sensitive data, but the whole-file scan found "
+            f"{len(findings)} item(s). The answer was based on excerpts only; rely on the "
+            f"Detected Sensitive Data table."
+        )
+    warning = " ".join(warnings) or None
 
     return JSONResponse(content={
         "answer": answer,

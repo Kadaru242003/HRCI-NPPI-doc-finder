@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from groq import Groq
 
 import store
+from masking import mask_snippet
 
 # --- CONFIG ---
 # Groq model used for both detection and /ask
@@ -66,6 +67,7 @@ def retrieve_chunks(doc_id: str, question: str, top_k: int = DEFAULT_TOP_K):
 # Load stored findings for a document
 # --------------------------------------------------------
 def load_findings(doc_id: str):
+    """The stored findings list, or None if no findings record exists."""
     results = store.collection.get(ids=[f"{doc_id}_findings"])
     for text in results["documents"]:
         try:
@@ -73,7 +75,50 @@ def load_findings(doc_id: str):
         except Exception:
             return []
 
-    return []
+    return None
+
+
+# --------------------------------------------------------
+# Findings summary for /ask, and a guard against answers that contradict it
+# --------------------------------------------------------
+def summarize_findings(findings, max_examples: int = 3) -> str:
+    """Compact, masked summary of a document's stored findings for the /ask prompt."""
+    if findings is None:
+        return "No whole-file scan result is stored for this document."
+    if not findings:
+        return "The whole-file scan found no sensitive data."
+
+    groups = {}
+    for item in findings:
+        if isinstance(item, dict):
+            key = (str(item.get("type", "?")).upper(), str(item.get("category", "other")).lower())
+        else:
+            key = ("?", "other")
+        groups.setdefault(key, []).append(item)
+
+    lines = [f"The whole-file scan found {len(findings)} sensitive item(s) (values masked):"]
+    for (ftype, category), items in sorted(groups.items()):
+        examples = []
+        for item in items[:max_examples]:
+            masked = mask_snippet(item)
+            examples.append(masked if len(masked) <= 60 else masked[:57] + "...")
+        more = f", +{len(items) - max_examples} more" if len(items) > max_examples else ""
+        lines.append(f"- {ftype} / {category}: {len(items)} ({'; '.join(examples)}{more})")
+    return "\n".join(lines)
+
+
+_NO_SENSITIVE_DATA = re.compile(
+    r"\b(?:no|not\s+(?:any|contain\s+any)|none\s+of\s+the)\s+(?:\w+\s+){0,3}?"
+    r"(?:sensitive|confidential|personal|hrci|nppi|pii)\b"
+    r"|\bdoes\s+not\s+(?:appear\s+to\s+)?contain\s+(?:any\s+)?(?:\w+\s+){0,2}?"
+    r"(?:sensitive|confidential|personal|hrci|nppi|pii)\b",
+    re.IGNORECASE,
+)
+
+
+def contradicts_findings(answer: str, findings) -> bool:
+    """True if the answer claims there is no sensitive data while findings exist."""
+    return bool(findings) and bool(_NO_SENSITIVE_DATA.search(answer or ""))
 
 
 # --------------------------------------------------------
