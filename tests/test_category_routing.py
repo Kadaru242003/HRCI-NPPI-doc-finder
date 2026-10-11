@@ -51,7 +51,7 @@ def test_list_every_ssn_uses_findings_not_search_or_llm(client, fake_llm, doc_id
     assert body["retrieved_chunk_ids"] == []
     assert fake_llm.calls == []
     assert "found **1** SSNs item(s)" in body["answer"]
-    assert "| NPPI | ssn | ***-**-6789 | rule |" in body["answer"]
+    assert f"| NPPI | ssn | {rag.md_escape('***-**-6789')} | rule |" in body["answer"]
     assert "123-45-6789" not in body["answer"]
 
 
@@ -59,14 +59,14 @@ def test_show_only_nppi(client, fake_llm, doc_id, no_retrieval):
     body = ask(client, doc_id, "Show only NPPI")
 
     assert "found **2** NPPI item(s)" in body["answer"]
-    assert "***-**-6789" in body["answer"] and "*****0021" in body["answer"]
+    assert rag.md_escape("***-**-6789") in body["answer"] and rag.md_escape("*****0021") in body["answer"]
     assert "Salary" not in body["answer"]
     assert fake_llm.calls == []
 
 
 def test_show_only_hrci_and_salary(client, fake_llm, doc_id, no_retrieval):
     hrci = ask(client, doc_id, "show only HRCI")["answer"]
-    assert "found **2** HRCI item(s)" in hrci and "Salary: $***,***" in hrci and "performance improvement plan" in hrci
+    assert "found **2** HRCI item(s)" in hrci and rag.md_escape("Salary: $***,***") in hrci and "performance improvement plan" in hrci
 
     salary = ask(client, doc_id, "show only salary")["answer"]
     assert "found **1** compensation item(s)" in salary and "performance" not in salary
@@ -99,7 +99,7 @@ def test_partial_scan_is_mentioned(client, fake_llm, no_retrieval):
     doc_id = client.post("/upload", files={"file": ("d.txt", text.encode(), "text/plain")}).json()["doc_id"]
 
     answer = ask(client, doc_id, "list every SSN")["answer"]
-    assert "***-**-6789" in answer
+    assert rag.md_escape("***-**-6789") in answer
     assert "parts of this file were scanned by the LLM" in answer
 
 
