@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 import pandas as pd
 
@@ -59,16 +60,13 @@ def index_file(file_path: str, doc_id: str | None = None):
     else:
         text = load_text_from_file(file_path)
 
-    debug_path = file_path + ".txt"
-    with open(debug_path, "w", encoding="utf-8") as f:
-        f.write(text)
-
     chunks = chunk_text(text)
 
     ids = []
     docs = []
     metas = []
 
+    created_at = time.time()  # used by retention to expire the document
     for i, chunk in enumerate(chunks):
         chunk = chunk.strip()
         if not chunk:
@@ -81,6 +79,7 @@ def index_file(file_path: str, doc_id: str | None = None):
             "doc_id": doc_id,
             "kind": "chunk",
             "chunk_index": i,
+            "created_at": created_at,
             "file_name": os.path.basename(file_path)
         })
 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import logging
@@ -7,6 +7,7 @@ import uuid
 
 from ingest import index_file
 from masking import mask_finding, mask_text
+import retention
 import rag
 from rag import (
     DEFAULT_TOP_K,
@@ -42,6 +43,13 @@ app = FastAPI()
 UPLOAD_DIR = "./data"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+@app.middleware("http")
+async def purge_expired_documents(request: Request, call_next):
+    """Retention: delete documents older than DOC_TTL_HOURS before handling any request."""
+    retention.purge_expired(UPLOAD_DIR)
+    return await call_next(request)
+
+
 # Serve chatbot UI
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -62,6 +70,7 @@ def startup_event():
     print("     http://localhost:8000/static/index.html")
     print(f" 🤖 LLM model (GROQ_MODEL): {rag.LLM_MODEL}")
     print("======================================\n")
+    retention.purge_expired(UPLOAD_DIR)
 
 # ---------------------------------------------------------
 # 1️⃣ FILE UPLOAD → INDEX → RUN GROQ EXTRACTION
@@ -224,3 +233,16 @@ Important:
         "warning": warning,
     })
 
+
+# ---------------------------------------------------------
+# 3️⃣ DELETE A DOCUMENT (chunks, findings, stored files)
+# ---------------------------------------------------------
+@app.delete("/documents/{doc_id}")
+async def delete_document(doc_id: str):
+    if not retention.is_valid_doc_id(doc_id):
+        raise HTTPException(status_code=400, detail="Invalid document id.")
+    result = retention.delete_document(doc_id, UPLOAD_DIR)
+    if not (result["deleted_chunks"] or result["deleted_findings"] or result["deleted_files"]):
+        raise HTTPException(status_code=404, detail="No document with this id (it may already be deleted or expired).")
+    log.info("delete doc=%s chunks=%d files=%d", doc_id, result["deleted_chunks"], result["deleted_files"])
+    return result
