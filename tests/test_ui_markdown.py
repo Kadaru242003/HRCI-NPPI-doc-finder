@@ -208,3 +208,50 @@ def test_partial_scan_is_reported_clearly(page, base_url, tmp_path):
     assert "2 LLM finding(s) were dropped" in status
     assert page.locator("#upload-warning").is_visible()
     assert "Partial scan" in page.locator("#upload-warning").inner_text()
+
+
+def test_category_answer_shows_masked_values_exactly(page, base_url, tmp_path):
+    """Masked values in a server-built Markdown table survive marked + DOMPurify unchanged."""
+    import rag
+
+    findings = [
+        {"type": "HRCI", "text_snippet": "$98,500", "category": "compensation", "confidence": 0.9, "source": "llm"},
+        {"type": "NPPI", "text_snippet": "123-45-6789", "category": "ssn", "confidence": 0.97, "source": "rule"},
+        # Excel rows are extracted with " | " separators, so values can contain pipes
+        {"type": "HRCI", "text_snippet": "Name: Jordan Smith | Salary: $98,500", "category": "compensation", "confidence": 0.9, "source": "llm"},
+    ]
+    expected = ["$**,***", "***-**-6789", "Name: J. S. | Salary: $**,***"]
+    answers = {
+        "which employee salary is shown": rag.answer_from_findings(rag.route_question("which employee salary is shown"), findings),
+        "list every HRCI and NPPI item": rag.answer_from_findings(rag.route_question("list every HRCI and NPPI item"), findings),
+    }
+
+    page.route(f"{base_url}/upload", lambda r: r.fulfill(json={
+        "doc_id": "3f1c9a5e-8a1b-4a53-9c0e-2b6f7d1e4a90", "indexed_chunks": 1, "warning": None,
+        "findings": [], "ungrounded_dropped": 0, "scan": {"total_batches": 1, "scanned_batches": 1, "failed_batches": 0, "retries": 0},
+    }))
+    page.route(f"{base_url}/ask", lambda r: r.fulfill(json={
+        "answer": answers[current["q"]],
+        "retrieved_chunk_ids": [], "warning": None, "route": "findings",
+    }))
+    current = {}
+    sample = tmp_path / "s.txt"
+    sample.write_text("x")
+    page.goto(f"{base_url}/static/index.html")
+    page.set_input_files("#file-input", str(sample))
+    page.click("#upload-form button[type=submit]")
+    page.wait_for_selector("#upload-status:has-text('Upload complete')")
+
+    def displayed_values(question):
+        current["q"] = question
+        page.evaluate("document.getElementById('chat-answer-content').replaceChildren()")
+        page.fill("#chat-input", question)
+        page.click("#chat-submit")
+        page.wait_for_selector("#chat-answer:not(.hidden) #chat-answer-content table")
+        rows = page.locator("#chat-answer-content table tbody tr")
+        return [rows.nth(i).locator("td").nth(2).inner_text() for i in range(rows.count())]
+
+    assert displayed_values("which employee salary is shown") == [expected[0], expected[2]]
+    assert displayed_values("list every HRCI and NPPI item") == expected
+    # Nothing in the answer was turned into emphasis
+    assert page.locator("#chat-answer-content table em, #chat-answer-content table strong").count() == 0
