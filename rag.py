@@ -243,7 +243,8 @@ NPPI (Non-Public Personal Information), categories:
 - routing_number: bank routing (ABA) numbers
 - bank_account: bank account or loan numbers
 
-Use "other" for anything sensitive that fits none of these.
+Only report spans that fit one of these categories. A person's name on its own
+is not HRCI; report it only as part of an HR fact about that person.
 
 Return ONLY a JSON array. No explanation. If nothing matches, return [].
 
@@ -427,12 +428,17 @@ def _normalize_llm_finding(item):
     return item
 
 
+def _has_canonical_category(finding) -> bool:
+    return isinstance(finding, dict) and canonical_category(finding.get("category")) is not None
+
+
 @dataclass
 class DetectionResult:
     findings: list
     total_batches: int
     errors: list = field(default_factory=list)  # one entry per failed LLM batch
     ungrounded_dropped: int = 0  # LLM findings whose snippet is not in the source text
+    uncategorized_dropped: int = 0  # LLM findings that fit none of the canonical categories
     retries: int = 0  # LLM retries across all batches
 
     @property
@@ -585,11 +591,12 @@ def is_grounded(finding, source_text: str) -> bool:
 def scan_batches(batches: list, use_llm: bool = True, use_rules: bool = True, ground: bool = True) -> DetectionResult:
     """Hybrid detection over text batches: rules for structured NPPI, the LLM for the rest.
 
-    With `ground`, LLM findings whose snippet is not in the batch text they came
-    from are dropped and counted. Pure function of the text (no storage), shared
-    by the app and scripts/evaluate.py.
+    With `ground`, LLM findings are validated: those that fit none of the canonical
+    categories (e.g. "other") and those whose snippet is not in the batch text they
+    came from are dropped and counted. Pure function of the text (no storage),
+    shared by the app and scripts/evaluate.py.
     """
-    per_batch, errors, dropped, stats = [], [], 0, {"retries": 0}
+    per_batch, errors, dropped, uncategorized, stats = [], [], 0, 0, {"retries": 0}
     for i, text in enumerate(batches):
         label = f"batch {i + 1}/{len(batches)}"
         if use_rules:
@@ -601,6 +608,9 @@ def scan_batches(batches: list, use_llm: bool = True, use_rules: bool = True, gr
                 errors.append(str(e))
                 continue
             if ground:
+                categorized = [f for f in llm_findings if _has_canonical_category(f)]
+                uncategorized += len(llm_findings) - len(categorized)
+                llm_findings = categorized
                 kept = [f for f in llm_findings if is_grounded(f, text)]
                 dropped += len(llm_findings) - len(kept)
                 llm_findings = kept
@@ -610,5 +620,6 @@ def scan_batches(batches: list, use_llm: bool = True, use_rules: bool = True, gr
         total_batches=len(batches) if use_llm else 0,
         errors=errors,
         ungrounded_dropped=dropped,
+        uncategorized_dropped=uncategorized,
         retries=stats["retries"],
     )
