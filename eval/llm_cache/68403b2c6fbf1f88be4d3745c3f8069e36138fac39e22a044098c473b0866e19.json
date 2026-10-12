@@ -1,0 +1,1 @@
+{"model": "openai/gpt-oss-120b", "content": "[\n  {\n    \"type\": \"NPPI\",\n    \"text_snippet\": \"617-53-0000\",\n    \"category\": \"ssn\",\n    \"confidence\": 0.95\n  }\n]"}

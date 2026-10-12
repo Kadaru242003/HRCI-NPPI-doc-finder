@@ -75,17 +75,23 @@ class CachingGroq:
             sort_keys=True,
         ).encode()).hexdigest()
         path = os.path.join(CACHE_DIR, f"{key}.json")
+        cached = None
         if os.path.exists(path):
+            cached = json.load(open(path, encoding="utf-8"))["content"]
+            if rag.extract_json_array((cached or "").strip()) is None:
+                cached = None  # an unusable reply is never reused; retry with a fresh call
+        if cached is not None:
             self.hits += 1
-            content = json.load(open(path, encoding="utf-8"))["content"]
+            content = cached
         elif not self.allow_calls:
             self.misses += 1
             raise CacheMiss("not cached and no GROQ_API_KEY (or --no-llm-calls)")
         else:
             content = self._call_groq(kwargs)
-            os.makedirs(CACHE_DIR, exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump({"model": kwargs["model"], "content": content}, f)
+            if rag.extract_json_array((content or "").strip()) is not None:
+                os.makedirs(CACHE_DIR, exist_ok=True)
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump({"model": kwargs["model"], "content": content}, f)
         message = SimpleNamespace(content=content)
         return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")])
 

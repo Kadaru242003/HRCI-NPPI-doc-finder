@@ -1,0 +1,1 @@
+{"model": "openai/gpt-oss-120b", "content": "[\n  {\n    \"type\": \"NPPI\",\n    \"text_snippet\": \"9463486323679268\",\n    \"category\": \"credit_card\",\n    \"confidence\": 0.95\n  }\n]"}
